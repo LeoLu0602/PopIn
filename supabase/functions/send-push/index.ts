@@ -81,6 +81,15 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Failed to fetch members" }), { status: 500 });
   }
 
+  // Guard: actor must be the host or a member of the event
+  const memberIds = (members || []).map((m) => m.user_id);
+  const actorIsHost = actor_id === event.host_id;
+  const actorIsMember = memberIds.includes(actor_id);
+  if (!actorIsHost && !actorIsMember) {
+    console.warn(`[send-push] actor ${actor_id} is not host or member of event ${event_id}`);
+    return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 });
+  }
+
   // Also fetch actor profile for join notifications (to include name in message)
   let actorName = "Someone";
   if (type === "join") {
