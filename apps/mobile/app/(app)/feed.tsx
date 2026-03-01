@@ -49,7 +49,7 @@ export default function FeedScreen() {
   const [events, setEvents] = useState<EventWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>("all");
-  const [sortBy, setSortBy] = useState<SortType>("distance");
+  const [sortBy, setSortBy] = useState<SortType>("time");
   const [userId, setUserId] = useState<string | null>(null);
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(null);
 
@@ -240,19 +240,6 @@ export default function FeedScreen() {
               className={`font-semibold ${filter === "today" ? "text-white" : "text-osu-dark"}`}
             >
               Today
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setSortBy("distance")}
-            className={`mr-2 px-4 py-2 rounded-lg ${
-              sortBy === "distance" ? "bg-osu-scarlet" : "bg-gray-100"
-            }`}
-          >
-            <Text
-              className={`font-semibold ${sortBy === "distance" ? "text-white" : "text-osu-dark"}`}
-            >
-              By Distance
             </Text>
           </TouchableOpacity>
 
