@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
+import * as Location from "expo-location";
 import { supabase } from "../../lib/supabase";
 import type { EventWithDetails } from "shared";
 import { EventCard } from "../../components/EventCard";
@@ -17,12 +18,40 @@ import { getPostHog, buildEventProps } from "../../lib/posthog";
 const viewedEventIds = new Set<string>();
 
 type FilterType = "all" | "next3hours" | "today";
+type SortType = "distance" | "time";
+
+type Coordinates = {
+  latitude: number;
+  longitude: number;
+};
+
+const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+
+const distanceInMeters = (from: Coordinates, to: Coordinates): number => {
+  const earthRadius = 6371000;
+  const dLat = toRadians(to.latitude - from.latitude);
+  const dLon = toRadians(to.longitude - from.longitude);
+  const lat1 = toRadians(from.latitude);
+  const lat2 = toRadians(to.latitude);
+
+  const haversine =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+  const centralAngle = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+  return earthRadius * centralAngle;
+};
+
+const compareByStartTime = (a: EventWithDetails, b: EventWithDetails) =>
+  new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
 
 export default function FeedScreen() {
   const [events, setEvents] = useState<EventWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>("all");
+  const [sortBy, setSortBy] = useState<SortType>("distance");
   const [userId, setUserId] = useState<string | null>(null);
+  const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(null);
 
   // Fire event_viewed only when ≥50% of the card is visible for ≥500 ms
   const viewabilityConfig = useRef({
@@ -49,6 +78,30 @@ export default function FeedScreen() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUserId(data.user?.id || null);
+    });
+  }, []);
+
+  useEffect(() => {
+    const loadLocation = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setUserCoordinates(null);
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      setUserCoordinates({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+    };
+
+    loadLocation().catch((error) => {
+      console.error("Failed to get user location", error);
+      setUserCoordinates(null);
     });
   }, []);
 
@@ -95,11 +148,45 @@ export default function FeedScreen() {
             : false,
         }),
       );
-      setEvents(eventsWithDetails);
+      if (sortBy === "distance" && userCoordinates) {
+        const geocodedEvents = await Promise.all(
+          eventsWithDetails.map(async (event) => {
+            try {
+              const geocoded = await Location.geocodeAsync(event.location_text);
+              if (geocoded.length === 0) {
+                return { event, distance: Number.POSITIVE_INFINITY };
+              }
+
+              const { latitude, longitude } = geocoded[0];
+              const distance = distanceInMeters(userCoordinates, {
+                latitude,
+                longitude,
+              });
+
+              return { event, distance };
+            } catch {
+              return { event, distance: Number.POSITIVE_INFINITY };
+            }
+          }),
+        );
+
+        const sortedByDistanceThenTime = geocodedEvents
+          .sort((a, b) => {
+            if (a.distance === b.distance) {
+              return compareByStartTime(a.event, b.event);
+            }
+            return a.distance - b.distance;
+          })
+          .map(({ event }) => event);
+
+        setEvents(sortedByDistanceThenTime);
+      } else {
+        setEvents([...eventsWithDetails].sort(compareByStartTime));
+      }
     }
 
     setLoading(false);
-  }, [filter, userId]);
+  }, [filter, userId, sortBy, userCoordinates]);
 
   useEffect(() => {
     fetchEvents();
@@ -153,6 +240,32 @@ export default function FeedScreen() {
               className={`font-semibold ${filter === "today" ? "text-white" : "text-osu-dark"}`}
             >
               Today
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setSortBy("distance")}
+            className={`mr-2 px-4 py-2 rounded-lg ${
+              sortBy === "distance" ? "bg-osu-scarlet" : "bg-gray-100"
+            }`}
+          >
+            <Text
+              className={`font-semibold ${sortBy === "distance" ? "text-white" : "text-osu-dark"}`}
+            >
+              By Distance
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setSortBy("time")}
+            className={`mr-2 px-4 py-2 rounded-lg ${
+              sortBy === "time" ? "bg-osu-scarlet" : "bg-gray-100"
+            }`}
+          >
+            <Text
+              className={`font-semibold ${sortBy === "time" ? "text-white" : "text-osu-dark"}`}
+            >
+              By Time
             </Text>
           </TouchableOpacity>
 
