@@ -21,6 +21,7 @@ export interface Database {
           avatar_url: string | null;
           hosted_count: number;
           attendance_rate: number;
+          expo_push_token: string | null;
         };
         Insert: {
           id: string;
@@ -33,6 +34,7 @@ export interface Database {
           avatar_url?: string | null;
           hosted_count?: number;
           attendance_rate?: number;
+          expo_push_token?: string | null;
         };
         Update: {
           id?: string;
@@ -45,6 +47,7 @@ export interface Database {
           avatar_url?: string | null;
           hosted_count?: number;
           attendance_rate?: number;
+          expo_push_token?: string | null;
         };
       };
       events: {
@@ -59,6 +62,7 @@ export interface Database {
           description: string | null;
           status: "active" | "canceled";
           created_at: string;
+          reminder_sent_at: string | null;
           image_url: string | null;
         };
         Insert: {
@@ -72,6 +76,7 @@ export interface Database {
           description?: string | null;
           status?: "active" | "canceled";
           created_at?: string;
+          reminder_sent_at?: string | null;
           image_url?: string | null;
         };
         Update: {
@@ -85,6 +90,7 @@ export interface Database {
           description?: string | null;
           status?: "active" | "canceled";
           created_at?: string;
+          reminder_sent_at?: string | null;
           image_url?: string | null;
         };
       };
@@ -133,7 +139,10 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      cancel_event: {
+        Args: { p_event_id: string };
+        Returns: void;
+      };
     };
     Enums: {
       [_ in never]: never;
