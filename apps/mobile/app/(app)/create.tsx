@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Modal,
   Pressable,
   Platform,
+  ActivityIndicator,
   Image,
   TouchableOpacity,
 } from "react-native";
@@ -15,7 +16,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import { router } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { uploadEventPhoto } from "../../lib/storage";
 import { PrimaryButton, SecondaryButton } from "../../components/Button";
@@ -49,6 +50,9 @@ const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000;
 
 export default function CreateEventScreen() {
+  const { editId } = useLocalSearchParams<{ editId?: string }>();
+  const isEditMode = !!editId;
+
   const now = new Date();
   const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
   const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
@@ -60,6 +64,8 @@ export default function CreateEventScreen() {
   const [capacity, setCapacity] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editLoading, setEditLoading] = useState(isEditMode);
+  const [userId, setUserId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [eventPhoto, setEventPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
 
@@ -118,6 +124,36 @@ export default function CreateEventScreen() {
     setActivePicker(null);
   };
 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id || null);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isEditMode || !editId) return;
+
+    (supabase
+      .from("events")
+      .select("title, start_time, end_time, location_text, capacity, description")
+      .eq("id", editId)
+      .single() as any
+    ).then(({ data, error }: { data: any; error: any }) => {
+      if (error || !data) {
+        Alert.alert("Error", "Failed to load event");
+        router.back();
+        return;
+      }
+      setTitle(data.title);
+      setStartDateTime(new Date(data.start_time));
+      setEndDateTime(new Date(data.end_time));
+      setLocation(data.location_text);
+      setCapacity(data.capacity ? String(data.capacity) : "");
+      setDescription(data.description || "");
+      setEditLoading(false);
+    });
+  }, [editId]);
+
   const pickEventPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -139,6 +175,7 @@ export default function CreateEventScreen() {
       mimeType: asset.mimeType ?? "image/jpeg",
     });
   };
+
 
   const validateRequiredFields = (): FieldErrors => {
     const errors: FieldErrors = {};
@@ -270,73 +307,115 @@ export default function CreateEventScreen() {
 
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    if (isEditMode && editId) {
+      const { error } = await (supabase.from("events") as any)
+        .update({
+          title: title.trim(),
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          location_text: location.trim(),
+          capacity: capacityNum,
+          description: description.trim() || null,
+        })
+        .eq("id", editId);
 
-    if (!user) {
-      Alert.alert("Error", "You must be logged in to create an event");
       setLoading(false);
-      return;
-    }
 
-    let imageUrl: string | null = null;
-    if (eventPhoto) {
-      try {
-        imageUrl = await uploadEventPhoto(user.id, eventPhoto.base64, eventPhoto.mimeType);
-      } catch {
-        Alert.alert("Error", "Failed to upload event photo");
+      if (error) {
+        Alert.alert("Error", "Failed to save changes");
+        console.error(error);
+      } else {
+        if (userId) {
+          supabase.functions
+            .invoke("send-push", { body: { type: "update", event_id: editId, actor_id: userId } })
+            .then(({ error: fnError }) => {
+              if (fnError) console.warn("[push] update notify error:", fnError);
+              else console.log("[push] update notification sent");
+            })
+            .catch((err) => console.warn("[push] update notify failed:", err));
+        }
+        setShowConfirm(false);
+        Alert.alert("Saved", "Event updated successfully.", [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      }
+    } else {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        Alert.alert("Error", "You must be logged in to create an event");
         setLoading(false);
         return;
       }
-    }
 
-    // @ts-expect-error - Supabase type inference issue
-    const { data: eventData, error } = await supabase.from("events").insert({
-      host_id: user.id,
-      title: title.trim(),
-      start_time: startDateTime.toISOString(),
-      end_time: endDateTime.toISOString(),
-      location_text: location.trim(),
-      capacity: capacityNum,
-      description: description.trim() || null,
-      image_url: imageUrl,
-      status: "active" as const,
-    }).select("id").single();
+      let imageUrl: string | null = null;
+      if (eventPhoto) {
+        try {
+          imageUrl = await uploadEventPhoto(user.id, eventPhoto.base64, eventPhoto.mimeType);
+        } catch {
+          Alert.alert("Error", "Failed to upload event photo");
+          setLoading(false);
+          return;
+        }
+      }
 
-    if (!error && eventData) {
       // @ts-expect-error - Supabase type inference issue
-      await supabase.from("event_members").insert({
-        event_id: (eventData as any).id,
-        user_id: user.id,
-      });
-    }
+      const { data: eventData, error } = await supabase.from("events").insert({
+        host_id: user.id,
+        title: title.trim(),
+        start_time: startDateTime.toISOString(),
+        end_time: endDateTime.toISOString(),
+        location_text: location.trim(),
+        capacity: capacityNum,
+        description: description.trim() || null,
+        image_url: imageUrl,
+        status: "active" as const,
+      }).select("id").single();
 
-    setLoading(false);
+      if (!error && eventData) {
+        // @ts-expect-error - Supabase type inference issue
+        await supabase.from("event_members").insert({
+          event_id: (eventData as any).id,
+          user_id: user.id,
+        });
+      }
 
-    if (error) {
-      Alert.alert("Error", "Failed to create event");
-      console.error(error);
-    } else {
-      setShowConfirm(false);
-      Alert.alert("Success", "Event created successfully!", [
-        {
-          text: "OK",
-          onPress: () => {
-            const resetNow = new Date();
-            setTitle("");
-            setStartDateTime(new Date(resetNow.getTime() + 60 * 60 * 1000));
-            setEndDateTime(new Date(resetNow.getTime() + 2 * 60 * 60 * 1000));
-            setLocation("");
-            setCapacity("");
-            setDescription("");
-            setEventPhoto(null);
-            router.push("/(app)/feed");
+      setLoading(false);
+
+      if (error) {
+        Alert.alert("Error", "Failed to create event");
+        console.error(error);
+      } else {
+        setShowConfirm(false);
+        Alert.alert("Success", "Event created successfully!", [
+          {
+            text: "OK",
+            onPress: () => {
+              const resetNow = new Date();
+              setTitle("");
+              setStartDateTime(new Date(resetNow.getTime() + 60 * 60 * 1000));
+              setEndDateTime(new Date(resetNow.getTime() + 2 * 60 * 60 * 1000));
+              setLocation("");
+              setCapacity("");
+              setDescription("");
+              setEventPhoto(null);
+              router.push("/(app)/feed");
+            },
           },
-        },
-      ]);
+        ]);
+      }
     }
   };
+
+  if (editLoading) {
+    return (
+      <View className="flex-1 bg-osu-light items-center justify-center">
+        <ActivityIndicator size="large" color="#BB0000" />
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1">
@@ -350,7 +429,7 @@ export default function CreateEventScreen() {
       >
         <Card>
           <Text className="text-2xl font-bold text-osu-dark mb-6">
-            Create New Event
+            {isEditMode ? "Edit Event" : "Create New Event"}
           </Text>
 
           <View className="mb-4">
@@ -483,7 +562,7 @@ export default function CreateEventScreen() {
           </View>
 
           <PrimaryButton
-            title="Review Event"
+            title={isEditMode ? "Review Changes" : "Review Event"}
             onPress={handleReview}
             loading={false}
           />
@@ -542,7 +621,7 @@ export default function CreateEventScreen() {
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" }}>
           <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
             <Text className="text-xl font-bold text-osu-dark mb-5">
-              Review Your Event
+              {isEditMode ? "Review Changes" : "Review Your Event"}
             </Text>
 
             <View className="mb-3">
@@ -604,7 +683,7 @@ export default function CreateEventScreen() {
               </View>
               <View className="flex-1">
                 <PrimaryButton
-                  title="Confirm & Create"
+                  title={isEditMode ? "Save Changes" : "Confirm & Create"}
                   onPress={handleConfirm}
                   loading={loading}
                 />

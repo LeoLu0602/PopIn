@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Image } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../../../lib/supabase";
 import { uploadEventPhoto } from "../../../lib/storage";
@@ -9,9 +9,18 @@ import { Card } from "../../../components/Card";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 import { getPostHog, buildEventProps } from "../../../lib/posthog";
 
+function notifyPush(type: "join" | "update" | "cancel", eventId: string, actorId: string) {
+  supabase.functions
+    .invoke("send-push", { body: { type, event_id: eventId, actor_id: actorId } })
+    .then(({ error }) => {
+      if (error) console.warn(`[push] ${type} notify error:`, error);
+      else console.log(`[push] ${type} notification sent`);
+    })
+    .catch((err) => console.warn(`[push] ${type} notify failed:`, err));
+}
+
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  if (!id) return null;
   const [event, setEvent] = useState<EventWithDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -84,6 +93,15 @@ export default function EventDetailScreen() {
     }
   }, [id, userId]);
 
+  // Re-fetch whenever this screen comes back into focus (e.g. returning from edit)
+  useFocusEffect(
+    useCallback(() => {
+      if (id && userId) {
+        fetchEvent();
+      }
+    }, [id, userId])
+  );
+
   const handleJoin = async () => {
     if (!event || !userId) return;
     // Prevent duplicate fires if user taps rapidly
@@ -117,6 +135,8 @@ export default function EventDetailScreen() {
         console.error(error);
       }
     } else {
+      // Notify the host that someone joined (fire-and-forget)
+      notifyPush("join", event.id, userId);
       Alert.alert("Success", "You have joined the event!");
       fetchEvent();
     }
@@ -144,7 +164,43 @@ export default function EventDetailScreen() {
     }
   };
 
-  const handleChangePhoto = async () => {
+  const handleCancelEvent = () => {
+    if (!event || !userId) return;
+
+    Alert.alert(
+      "Cancel Event",
+      "Are you sure you want to cancel this event? All attendees will be notified.",
+      [
+        { text: "Keep Event", style: "cancel" },
+        {
+          text: "Cancel Event",
+          style: "destructive",
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const { error } = await supabase.rpc("cancel_event", {
+                p_event_id: event.id,
+              } as any);
+
+              if (error) throw error;
+
+              notifyPush("cancel", event.id, userId);
+              Alert.alert("Event Canceled", "Your event has been canceled.", [
+                { text: "OK", onPress: () => router.back() },
+              ]);
+            } catch (err: any) {
+              console.error("[cancel] error:", err);
+              Alert.alert("Error", `Failed to cancel event: ${err?.message ?? "unknown error"}`);
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+const handleChangePhoto = async () => {
     if (!event || !userId) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -164,8 +220,7 @@ export default function EventDetailScreen() {
     setUpdatingPhoto(true);
     try {
       const imageUrl = await uploadEventPhoto(userId, asset.base64!, asset.mimeType ?? "image/jpeg");
-      const { error } = await supabase
-        .from("events")
+      const { error } = await (supabase.from("events") as any)
         .update({ image_url: imageUrl })
         .eq("id", event.id);
       if (error) {
@@ -179,7 +234,10 @@ export default function EventDetailScreen() {
     } finally {
       setUpdatingPhoto(false);
     }
+
   };
+
+  if (!id) return null;
 
   if (loading) {
     return (
@@ -336,9 +394,21 @@ export default function EventDetailScreen() {
 
           {isHost && (
             <View className="bg-osu-light p-4 rounded-lg">
-              <Text className="text-osu-dark font-semibold">
+              <Text className="text-osu-dark font-semibold mb-3">
                 You are hosting this event
               </Text>
+              <View style={{ gap: 10 }}>
+                <SecondaryButton
+                  title="Edit Event"
+                  onPress={() => router.push(`/(app)/edit-event?editId=${event.id}`)}
+                  loading={false}
+                />
+                <SecondaryButton
+                  title="Cancel Event"
+                  onPress={handleCancelEvent}
+                  loading={actionLoading}
+                />
+              </View>
             </View>
           )}
         </Card>

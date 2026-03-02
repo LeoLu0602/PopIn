@@ -70,6 +70,13 @@ export default function AppLayout() {
           }}
         />
         <Tabs.Screen
+          name="edit-event"
+          options={{
+            href: null,
+            title: "Edit Event",
+          }}
+        />
+        <Tabs.Screen
           name="profile/[id]"
           options={{
             href: null,
