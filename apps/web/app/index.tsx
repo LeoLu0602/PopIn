@@ -141,7 +141,8 @@ export default function AuthScreen() {
                 </Text>
                 <TextInput
                   className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-4 mb-6 text-base"
-                  placeholder="name.###@osu.edu"
+                  placeholder="name.#@osu.edu"
+                  placeholderTextColor="#6B7280"
                   value={email}
                   onChangeText={setEmail}
                   autoCapitalize="none"
@@ -172,6 +173,7 @@ export default function AuthScreen() {
                 <TextInput
                   className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-4 mb-6 text-base text-center tracking-widest"
                   placeholder="000000"
+                  placeholderTextColor="#6B7280"
                   value={otp}
                   onChangeText={setOtp}
                   keyboardType="number-pad"
