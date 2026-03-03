@@ -6,6 +6,7 @@ import {
   Alert,
   Modal,
   Pressable,
+  Platform,
   ActivityIndicator,
   Image,
   TouchableOpacity,
@@ -22,6 +23,7 @@ import { PrimaryButton, SecondaryButton } from "../../components/Button";
 import { Card } from "../../components/Card";
 
 type RequiredField = "title" | "location";
+type PickerTarget = "startDate" | "startTime" | "endDate" | "endTime";
 
 type FieldErrors = Partial<Record<RequiredField, string>>;
 
@@ -45,6 +47,7 @@ const isSameDay = (a: Date, b: Date): boolean =>
   a.getDate() === b.getDate();
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
+const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000;
 
 export default function CreateEventScreen() {
   const { editId } = useLocalSearchParams<{ editId?: string }>();
@@ -66,12 +69,60 @@ export default function CreateEventScreen() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [eventPhoto, setEventPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
 
-  const [showStartDate, setShowStartDate] = useState(false);
-  const [showStartTime, setShowStartTime] = useState(false);
-  const [showEndDate, setShowEndDate] = useState(false);
-  const [showEndTime, setShowEndTime] = useState(false);
+  const [activePicker, setActivePicker] = useState<PickerTarget | null>(null);
+  const [pickerValue, setPickerValue] = useState(oneHourLater);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  useEffect(() => {
+    if (endDateTime <= startDateTime) {
+      setEndDateTime(new Date(startDateTime.getTime() + DEFAULT_EVENT_DURATION_MS));
+    }
+  }, [startDateTime, endDateTime]);
+
+  const getPickerTitle = (target: PickerTarget): string => {
+    switch (target) {
+      case "startDate":
+        return "Select Start Date";
+      case "startTime":
+        return "Select Start Time";
+      case "endDate":
+        return "Select End Date";
+      case "endTime":
+        return "Select End Time";
+      default:
+        return "Select";
+    }
+  };
+
+  const getPickerMode = (target: PickerTarget): "date" | "time" =>
+    target === "startDate" || target === "endDate" ? "date" : "time";
+
+  const pickerDisplay = Platform.OS === "ios" ? "spinner" : "default";
+
+  const getPickerMinimumDate = (target: PickerTarget): Date | undefined => {
+    if (target === "startDate") return new Date();
+    if (target === "startTime") {
+      return isSameDay(startDateTime, new Date()) ? new Date() : undefined;
+    }
+    if (target === "endDate") return startDateTime;
+    if (target === "endTime") {
+      return isSameDay(endDateTime, startDateTime) ? startDateTime : undefined;
+    }
+    return undefined;
+  };
+
+  const openPicker = (target: PickerTarget) => {
+    setActivePicker(target);
+    if (target === "startDate" || target === "startTime") {
+      setPickerValue(startDateTime);
+      return;
+    }
+    setPickerValue(endDateTime);
+  };
+
+  const closePicker = () => {
+    setActivePicker(null);
+  };
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -155,62 +206,66 @@ export default function CreateEventScreen() {
     }
   };
 
-  const handleStartDateChange = (
+  const handlePickerValueChange = (
     _event: DateTimePickerEvent,
     selected?: Date,
   ) => {
-    setShowStartDate(false);
     if (selected) {
+      setPickerValue(selected);
+    }
+  };
+
+  const applyPickerSelection = () => {
+    if (!activePicker) return;
+
+    if (activePicker === "startDate") {
       const updated = new Date(startDateTime);
       updated.setFullYear(
-        selected.getFullYear(),
-        selected.getMonth(),
-        selected.getDate(),
+        pickerValue.getFullYear(),
+        pickerValue.getMonth(),
+        pickerValue.getDate(),
       );
       setStartDateTime(updated);
       checkStartWithin48Hours(updated);
+      closePicker();
+      return;
     }
-  };
 
-  const handleStartTimeChange = (
-    _event: DateTimePickerEvent,
-    selected?: Date,
-  ) => {
-    setShowStartTime(false);
-    if (selected) {
+    if (activePicker === "startTime") {
       const updated = new Date(startDateTime);
-      updated.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      updated.setHours(pickerValue.getHours(), pickerValue.getMinutes(), 0, 0);
       setStartDateTime(updated);
       checkStartWithin48Hours(updated);
+      closePicker();
+      return;
     }
-  };
 
-  const handleEndDateChange = (
-    _event: DateTimePickerEvent,
-    selected?: Date,
-  ) => {
-    setShowEndDate(false);
-    if (selected) {
+    if (activePicker === "endDate") {
       const updated = new Date(endDateTime);
       updated.setFullYear(
-        selected.getFullYear(),
-        selected.getMonth(),
-        selected.getDate(),
+        pickerValue.getFullYear(),
+        pickerValue.getMonth(),
+        pickerValue.getDate(),
       );
+      if (updated <= startDateTime) {
+        setEndDateTime(new Date(startDateTime.getTime() + DEFAULT_EVENT_DURATION_MS));
+        closePicker();
+        return;
+      }
       setEndDateTime(updated);
+      closePicker();
+      return;
     }
-  };
 
-  const handleEndTimeChange = (
-    _event: DateTimePickerEvent,
-    selected?: Date,
-  ) => {
-    setShowEndTime(false);
-    if (selected) {
-      const updated = new Date(endDateTime);
-      updated.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-      setEndDateTime(updated);
+    const updated = new Date(endDateTime);
+    updated.setHours(pickerValue.getHours(), pickerValue.getMinutes(), 0, 0);
+    if (updated <= startDateTime) {
+      setEndDateTime(new Date(startDateTime.getTime() + DEFAULT_EVENT_DURATION_MS));
+      closePicker();
+      return;
     }
+    setEndDateTime(updated);
+    closePicker();
   };
 
   const handleReview = () => {
@@ -399,76 +454,40 @@ export default function CreateEventScreen() {
             {renderRequiredLabel("Start Date")}
             <Pressable
               className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3"
-              onPress={() => setShowStartDate(true)}
+              onPress={() => openPicker("startDate")}
             >
               <Text className="text-base">{formatDate(startDateTime)}</Text>
             </Pressable>
-            {showStartDate && (
-              <DateTimePicker
-                value={startDateTime}
-                mode="date"
-                display="default"
-                minimumDate={new Date()}
-                onChange={handleStartDateChange}
-              />
-            )}
           </View>
 
           <View className="mb-4">
             {renderRequiredLabel("Start Time")}
             <Pressable
               className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3"
-              onPress={() => setShowStartTime(true)}
+              onPress={() => openPicker("startTime")}
             >
               <Text className="text-base">{formatTime(startDateTime)}</Text>
             </Pressable>
-            {showStartTime && (
-              <DateTimePicker
-                value={startDateTime}
-                mode="time"
-                display="default"
-                minimumDate={isSameDay(startDateTime, new Date()) ? new Date() : undefined}
-                onChange={handleStartTimeChange}
-              />
-            )}
           </View>
 
           <View className="mb-4">
             {renderRequiredLabel("End Date")}
             <Pressable
               className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3"
-              onPress={() => setShowEndDate(true)}
+              onPress={() => openPicker("endDate")}
             >
               <Text className="text-base">{formatDate(endDateTime)}</Text>
             </Pressable>
-            {showEndDate && (
-              <DateTimePicker
-                value={endDateTime}
-                mode="date"
-                display="default"
-                minimumDate={startDateTime}
-                onChange={handleEndDateChange}
-              />
-            )}
           </View>
 
           <View className="mb-4">
             {renderRequiredLabel("End Time")}
             <Pressable
               className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3"
-              onPress={() => setShowEndTime(true)}
+              onPress={() => openPicker("endTime")}
             >
               <Text className="text-base">{formatTime(endDateTime)}</Text>
             </Pressable>
-            {showEndTime && (
-              <DateTimePicker
-                value={endDateTime}
-                mode="time"
-                display="default"
-                minimumDate={isSameDay(endDateTime, startDateTime) ? startDateTime : undefined}
-                onChange={handleEndTimeChange}
-              />
-            )}
           </View>
 
           <View className="mb-4">
@@ -549,6 +568,49 @@ export default function CreateEventScreen() {
           />
         </Card>
       </KeyboardAwareScrollView>
+
+      <Modal
+        visible={activePicker !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={closePicker}
+      >
+        <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 16 }}>
+          <View className="bg-white rounded-2xl p-5">
+            {activePicker && (
+              <>
+                <Text className="text-lg font-bold text-osu-dark mb-4">
+                  {getPickerTitle(activePicker)}
+                </Text>
+                <DateTimePicker
+                  value={pickerValue}
+                  mode={getPickerMode(activePicker)}
+                  display={pickerDisplay}
+                  minimumDate={getPickerMinimumDate(activePicker)}
+                  onChange={handlePickerValueChange}
+                  {...(Platform.OS === "ios"
+                    ? { themeVariant: "light" as const, textColor: "#111827" }
+                    : {})}
+                />
+                <View className="mt-5 flex-row">
+                  <Pressable
+                    className="flex-1 border border-osu-scarlet rounded-xl py-3 mr-2 items-center"
+                    onPress={closePicker}
+                  >
+                    <Text className="text-osu-scarlet font-semibold">Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    className="flex-1 bg-osu-scarlet rounded-xl py-3 ml-2 items-center"
+                    onPress={applyPickerSelection}
+                  >
+                    <Text className="text-white font-semibold">Done</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showConfirm}
