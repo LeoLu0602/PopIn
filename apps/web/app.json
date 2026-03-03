@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "PopIn Web",
+    "slug": "popin-web",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#BB0000"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.osu.popin"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#BB0000"
+      },
+      "package": "com.osu.popin"
+    },
+
+    "scheme": "popin-web",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#BB0000"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "98323105-1673-40e9-a45d-8226c9b84247"
+      }
+    }
+  }
+}
