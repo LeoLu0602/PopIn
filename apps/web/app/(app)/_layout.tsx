@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { Platform } from "react-native";
 
 export default function AppLayout() {
   return (
@@ -13,24 +14,45 @@ export default function AppLayout() {
           tabBarStyle: {
             borderTopWidth: 1,
             borderTopColor: "#E5E5E5",
+            ...(Platform.OS === "web"
+              ? {
+                  height: 58,
+                  width: "100%",
+                  maxWidth: 960,
+                  alignSelf: "center",
+                }
+              : {}),
           },
           tabBarLabelStyle: {
             fontSize: 13,
             fontWeight: "600",
             marginBottom: 2,
           },
+          tabBarItemStyle: {
+            paddingVertical: 6,
+          },
           sceneStyle: {
             width: "100%",
             maxWidth: 960,
             alignSelf: "center",
+            paddingHorizontal: 16,
+            paddingTop: 8,
           },
           headerStyle: {
             backgroundColor: "#BB0000",
+            ...(Platform.OS === "web"
+              ? {
+                  width: "100%",
+                  maxWidth: 960,
+                  alignSelf: "center",
+                }
+              : {}),
           },
           headerTintColor: "#FFFFFF",
           headerTitleStyle: {
             fontWeight: "bold",
           },
+          headerTitleAlign: "center",
         }}
       >
         <Tabs.Screen
