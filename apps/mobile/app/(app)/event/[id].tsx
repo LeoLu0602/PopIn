@@ -45,8 +45,8 @@ export default function EventDetailScreen() {
       .select(
         `
         *,
-        host:profiles!events_host_id_fkey(id, email, display_name, hosted_count),
-        event_members(user_id)
+      host:profiles!events_host_id_fkey(id, email, display_name, hosted_count),
+      event_members(user_id, profile:profiles!event_members_user_id_fkey(id, email, display_name, avatar_url))
       `,
       )
       .eq("id", id)
@@ -64,6 +64,7 @@ export default function EventDetailScreen() {
         is_joined: userId
           ? data.event_members?.some((m: any) => m.user_id === userId)
           : false,
+        participants: data.event_members ?? [],
       };
       setEvent(eventWithDetails);
 
@@ -285,6 +286,25 @@ const handleChangePhoto = async () => {
           ? "1 spot left"
           : `${spotsLeft} spots left`;
 
+  const participants = event.participants ?? [];
+  const avatarStack = participants.slice(0, 5);
+
+  const buildJoinSummary = () => {
+    if (participants.length === 0) return null;
+    const getName = (p: (typeof participants)[0]) =>
+      (p.profile?.display_name || p.profile?.email?.split("@")[0] || "Someone").split(" ")[0];
+    if (participants.length === 1) return `${getName(participants[0])} joined`;
+    if (participants.length === 2)
+      return `${getName(participants[0])} and ${getName(participants[1])} joined`;
+    const others = participants.length - 1;
+    return `${getName(participants[0])}, and ${others} other${others > 1 ? "s" : ""} joined`;
+  };
+
+  const joinSummary = buildJoinSummary();
+
+  const AVATAR_SIZE = 32;
+  const AVATAR_OVERLAP = 10;
+
   return (
     <ScrollView className="flex-1 bg-osu-light">
       <View className="p-4">
@@ -353,6 +373,75 @@ const handleChangePhoto = async () => {
             </Text>
             <Text className="text-osu-dark">{scarcityCopy}</Text>
           </View>
+
+          {participants.length > 0 && (
+            <TouchableOpacity
+              className="mb-4 flex-row items-center"
+              onPress={() =>
+                router.push(`/(app)/participants?eventId=${event.id}`)
+              }
+              activeOpacity={0.7}
+            >
+              <View
+                style={{
+                  width:
+                    AVATAR_SIZE +
+                    (avatarStack.length - 1) * (AVATAR_SIZE - AVATAR_OVERLAP),
+                  height: AVATAR_SIZE,
+                  position: "relative",
+                  marginRight: 10,
+                }}
+              >
+                {avatarStack.map((p, i) => {
+                  const initials = (
+                    p.profile?.display_name ||
+                    p.profile?.email?.split("@")[0] ||
+                    "?"
+                  ).trim().slice(0, 1).toUpperCase();
+                  return (
+                    <View
+                      key={p.user_id}
+                      style={{
+                        position: "absolute",
+                        left: i * (AVATAR_SIZE - AVATAR_OVERLAP),
+                        width: AVATAR_SIZE,
+                        height: AVATAR_SIZE,
+                        borderRadius: AVATAR_SIZE / 2,
+                        borderWidth: 2,
+                        borderColor: "#FFFFFF",
+                        overflow: "hidden",
+                        backgroundColor: "#BB0000",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: avatarStack.length - i,
+                      }}
+                    >
+                      {p.profile?.avatar_url ? (
+                        <Image
+                          source={{ uri: p.profile.avatar_url }}
+                          style={{
+                            width: AVATAR_SIZE,
+                            height: AVATAR_SIZE,
+                          }}
+                        />
+                      ) : (
+                        <Text
+                          style={{
+                            color: "#FFFFFF",
+                            fontSize: 13,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {initials}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+              <Text className="text-osu-dark text-sm flex-1">{joinSummary}</Text>
+            </TouchableOpacity>
+          )}
 
           {event.description && (
             <View className="mb-4">

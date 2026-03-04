@@ -41,10 +41,16 @@ export interface Feedback {
 }
 
 // Extended types for UI
+export interface EventParticipant {
+  user_id: string;
+  profile: Pick<Profile, "id" | "email" | "display_name" | "avatar_url"> | null;
+}
+
 export interface EventWithDetails extends Event {
   host?: Profile;
   attendee_count?: number;
   is_joined?: boolean;
+  participants?: EventParticipant[];
 }
 
 // Form types
