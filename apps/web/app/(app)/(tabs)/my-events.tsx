@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { View, Text, ScrollView, RefreshControl, Alert } from "react-native";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 import type { EventWithDetails } from "shared";
-import { EventCard } from "../../components/EventCard";
+import { EventCard } from "../../../components/EventCard";
 
 export default function MyEventsScreen() {
   const [hostingEvents, setHostingEvents] = useState<EventWithDetails[]>([]);

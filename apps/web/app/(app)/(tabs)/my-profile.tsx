@@ -23,11 +23,11 @@ const formatYear = (y: number) => (y === 6 ? "Graduate" : `Year ${y}`);
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { useFocusEffect } from "expo-router";
 import { useCallback } from "react";
-import { supabase } from "../../lib/supabase";
-import { uploadAvatar } from "../../lib/storage";
+import { supabase } from "../../../lib/supabase";
+import { uploadAvatar } from "../../../lib/storage";
 import type { Profile } from "shared";
-import { Card } from "../../components/Card";
-import { PrimaryButton, SecondaryButton } from "../../components/Button";
+import { Card } from "../../../components/Card";
+import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 
 export default function MyProfileScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);

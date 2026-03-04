@@ -18,10 +18,10 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, router } from "expo-router";
-import { supabase } from "../../lib/supabase";
-import { uploadEventPhoto } from "../../lib/storage";
-import { PrimaryButton, SecondaryButton } from "../../components/Button";
-import { Card } from "../../components/Card";
+import { supabase } from "../../../lib/supabase";
+import { uploadEventPhoto } from "../../../lib/storage";
+import { PrimaryButton, SecondaryButton } from "../../../components/Button";
+import { Card } from "../../../components/Card";
 
 type RequiredField = "title" | "location";
 type PickerTarget = "startDate" | "startTime" | "endDate" | "endTime";
@@ -399,7 +399,7 @@ export default function CreateEventScreen() {
         setCapacity("");
         setDescription("");
         setEventPhoto(null);
-        router.push("/(app)/feed");
+        router.replace("/(app)/(tabs)/feed");
       }
     }
   };

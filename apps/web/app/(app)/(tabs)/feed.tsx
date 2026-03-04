@@ -9,9 +9,9 @@ import {
   Alert,
 } from "react-native";
 import * as Location from "expo-location";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 import type { EventWithDetails } from "shared";
-import { EventCard } from "../../components/EventCard";
+import { EventCard } from "../../../components/EventCard";
 
 type FilterType = "all" | "next3hours" | "today";
 type SortType = "distance" | "time";
