@@ -5,9 +5,7 @@ let _client: PostHog | null = null;
 
 export function getPostHog(): PostHog {
   if (!_client) {
-    // @ts-expect-error - Expo Metro resolves EXPO_PUBLIC_* at build time
     _client = new PostHog(process.env.EXPO_PUBLIC_POSTHOG_API_KEY as string, {
-      // @ts-expect-error - Expo Metro resolves EXPO_PUBLIC_* at build time
       host: process.env.EXPO_PUBLIC_POSTHOG_HOST as string,
       // Flush immediately on every capture (good for mobile MVP)
       flushAt: 1,
