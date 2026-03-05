@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useFocusEffect } from "expo-router";
 import {
   View,
   Text,
@@ -8,9 +9,9 @@ import {
   Alert,
 } from "react-native";
 import * as Location from "expo-location";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 import type { EventWithDetails } from "shared";
-import { EventCard } from "../../components/EventCard";
+import { EventCard } from "../../../components/EventCard";
 
 type FilterType = "all" | "next3hours" | "today";
 type SortType = "distance" | "time";
@@ -161,13 +162,11 @@ export default function FeedScreen() {
     setLoading(false);
   }, [filter, userId, sortBy, userCoordinates]);
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-  };
+  useFocusEffect(
+    useCallback(() => {
+      fetchEvents();
+    }, [fetchEvents])
+  );
 
   return (
     <View className="flex-1 bg-osu-light">
@@ -229,12 +228,6 @@ export default function FeedScreen() {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={handleSignOut}
-            className="px-4 py-2 rounded-lg bg-gray-100"
-          >
-            <Text className="font-semibold text-osu-dark">Sign Out</Text>
-          </TouchableOpacity>
         </ScrollView>
       </View>
 

@@ -51,7 +51,7 @@ export default function RootLayout() {
     if (!session && inApp) {
       router.replace("/");
     } else if (session && !inApp) {
-      router.replace("/(app)/feed");
+      router.replace("/(app)/(tabs)/feed");
     }
   }, [session, segments, loading]);
 

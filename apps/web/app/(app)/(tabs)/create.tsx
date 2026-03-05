@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -17,10 +18,10 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, router } from "expo-router";
-import { supabase } from "../../lib/supabase";
-import { uploadEventPhoto } from "../../lib/storage";
-import { PrimaryButton, SecondaryButton } from "../../components/Button";
-import { Card } from "../../components/Card";
+import { supabase } from "../../../lib/supabase";
+import { uploadEventPhoto } from "../../../lib/storage";
+import { PrimaryButton, SecondaryButton } from "../../../components/Button";
+import { Card } from "../../../components/Card";
 
 type RequiredField = "title" | "location";
 type PickerTarget = "startDate" | "startTime" | "endDate" | "endTime";
@@ -389,22 +390,16 @@ export default function CreateEventScreen() {
         console.error(error);
       } else {
         setShowConfirm(false);
-        Alert.alert("Success", "Event created successfully!", [
-          {
-            text: "OK",
-            onPress: () => {
-              const resetNow = new Date();
-              setTitle("");
-              setStartDateTime(new Date(resetNow.getTime() + 60 * 60 * 1000));
-              setEndDateTime(new Date(resetNow.getTime() + 2 * 60 * 60 * 1000));
-              setLocation("");
-              setCapacity("");
-              setDescription("");
-              setEventPhoto(null);
-              router.push("/(app)/feed");
-            },
-          },
-        ]);
+        Alert.alert("Success", "Event created successfully!");
+        const resetNow = new Date();
+        setTitle("");
+        setStartDateTime(new Date(resetNow.getTime() + 60 * 60 * 1000));
+        setEndDateTime(new Date(resetNow.getTime() + 2 * 60 * 60 * 1000));
+        setLocation("");
+        setCapacity("");
+        setDescription("");
+        setEventPhoto(null);
+        router.replace("/(app)/(tabs)/feed");
       }
     }
   };
@@ -619,61 +614,66 @@ export default function CreateEventScreen() {
         onRequestClose={() => setShowConfirm(false)}
       >
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" }}>
-          <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
-            <Text className="text-xl font-bold text-osu-dark mb-5">
-              {isEditMode ? "Review Changes" : "Review Your Event"}
-            </Text>
-
-            <View className="mb-3">
-              <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Title</Text>
-              <Text className="text-base text-osu-dark">{title.trim()}</Text>
-            </View>
-
-            <View className="mb-3">
-              <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Start</Text>
-              <Text className="text-base text-osu-dark">
-                {formatDate(startDateTime)} • {formatTime(startDateTime)}
+          <View className="bg-white rounded-t-3xl" style={{ maxHeight: "90%" }}>
+            <ScrollView
+              contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 8 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text className="text-xl font-bold text-osu-dark mb-5">
+                {isEditMode ? "Review Changes" : "Review Your Event"}
               </Text>
-            </View>
 
-            <View className="mb-3">
-              <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">End</Text>
-              <Text className="text-base text-osu-dark">
-                {formatDate(endDateTime)} • {formatTime(endDateTime)}
-              </Text>
-            </View>
-
-            <View className="mb-3">
-              <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Location</Text>
-              <Text className="text-base text-osu-dark">{location.trim()}</Text>
-            </View>
-
-            <View className="mb-3">
-              <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Capacity</Text>
-              <Text className="text-base text-osu-dark">
-                {capacity.trim() ? capacity.trim() : "Unlimited"}
-              </Text>
-            </View>
-
-            {description.trim() ? (
               <View className="mb-3">
-                <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Description</Text>
-                <Text className="text-base text-osu-dark">{description.trim()}</Text>
+                <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Title</Text>
+                <Text className="text-base text-osu-dark">{title.trim()}</Text>
               </View>
-            ) : null}
 
-            {eventPhoto && (
               <View className="mb-3">
-                <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Photo</Text>
-                <Image
-                  source={{ uri: eventPhoto.uri }}
-                  style={{ width: "100%", aspectRatio: 16 / 9, borderRadius: 8, marginTop: 4 }}
-                  resizeMode="cover"
-                />
+                <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Start</Text>
+                <Text className="text-base text-osu-dark">
+                  {formatDate(startDateTime)} • {formatTime(startDateTime)}
+                </Text>
               </View>
-            )}
 
-            <View className="flex-row mt-6" style={{ gap: 12 }}>
+              <View className="mb-3">
+                <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">End</Text>
+                <Text className="text-base text-osu-dark">
+                  {formatDate(endDateTime)} • {formatTime(endDateTime)}
+                </Text>
+              </View>
+
+              <View className="mb-3">
+                <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Location</Text>
+                <Text className="text-base text-osu-dark">{location.trim()}</Text>
+              </View>
+
+              <View className="mb-3">
+                <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Capacity</Text>
+                <Text className="text-base text-osu-dark">
+                  {capacity.trim() ? capacity.trim() : "Unlimited"}
+                </Text>
+              </View>
+
+              {description.trim() ? (
+                <View className="mb-3">
+                  <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Description</Text>
+                  <Text className="text-base text-osu-dark">{description.trim()}</Text>
+                </View>
+              ) : null}
+
+              {eventPhoto && (
+                <View className="mb-3">
+                  <Text className="text-xs font-semibold text-gray-400 uppercase mb-0.5">Photo</Text>
+                  <Image
+                    source={{ uri: eventPhoto.uri }}
+                    style={{ width: "100%", aspectRatio: 16 / 9, borderRadius: 8, marginTop: 4 }}
+                    resizeMode="cover"
+                  />
+                </View>
+              )}
+            </ScrollView>
+
+            <View className="flex-row px-6 pt-2 pb-10" style={{ gap: 12 }}>
               <View className="flex-1">
                 <SecondaryButton
                   title="Edit"

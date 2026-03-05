@@ -8,9 +8,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { supabase } from "../../lib/supabase";
-import { PrimaryButton } from "../../components/Button";
-import { Card } from "../../components/Card";
+import { supabase } from "../../../lib/supabase";
+import { PrimaryButton } from "../../../components/Button";
+import { Card } from "../../../components/Card";
 
 export default function FeedbackScreen() {
   const [message, setMessage] = useState("");
