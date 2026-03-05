@@ -21,7 +21,6 @@ import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import { uploadEventPhoto } from "../../../lib/storage";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
-import { Card } from "../../../components/Card";
 
 type RequiredField = "title" | "location";
 type PickerTarget = "startDate" | "startTime" | "endDate" | "endTime";
@@ -64,6 +63,8 @@ export default function CreateEventScreen() {
   const [location, setLocation] = useState("");
   const [capacity, setCapacity] = useState("");
   const [description, setDescription] = useState("");
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const [removePhotoRequested, setRemovePhotoRequested] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editLoading, setEditLoading] = useState(isEditMode);
   const [userId, setUserId] = useState<string | null>(null);
@@ -136,7 +137,7 @@ export default function CreateEventScreen() {
 
     (supabase
       .from("events")
-      .select("title, start_time, end_time, location_text, capacity, description")
+      .select("title, start_time, end_time, location_text, capacity, description, image_url")
       .eq("id", editId)
       .single() as any
     ).then(({ data, error }: { data: any; error: any }) => {
@@ -151,6 +152,7 @@ export default function CreateEventScreen() {
       setLocation(data.location_text);
       setCapacity(data.capacity ? String(data.capacity) : "");
       setDescription(data.description || "");
+      setExistingImageUrl(data.image_url || null);
       setEditLoading(false);
     });
   }, [editId]);
@@ -175,6 +177,7 @@ export default function CreateEventScreen() {
       base64: asset.base64!,
       mimeType: asset.mimeType ?? "image/jpeg",
     });
+    setRemovePhotoRequested(false);
   };
 
 
@@ -188,12 +191,12 @@ export default function CreateEventScreen() {
   };
 
   const getInputClassName = (field: RequiredField) =>
-    `bg-gray-50 border rounded-lg px-4 py-3 text-base ${
-      fieldErrors[field] ? "border-red-500" : "border-gray-200"
+    `bg-white border rounded-md px-4 py-3 text-base text-osu-dark ${
+      fieldErrors[field] ? "border-red-500" : "border-gray-300"
     }`;
 
   const renderRequiredLabel = (label: string) => (
-    <Text className="text-osu-dark mb-2 font-semibold">
+    <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
       {label} <Text className="text-red-500">*</Text>
     </Text>
   );
@@ -309,15 +312,39 @@ export default function CreateEventScreen() {
     setLoading(true);
 
     if (isEditMode && editId) {
+      let nextImageUrl: string | null | undefined = undefined;
+      if (eventPhoto && userId) {
+        try {
+          nextImageUrl = await uploadEventPhoto(
+            userId,
+            eventPhoto.base64,
+            eventPhoto.mimeType,
+          );
+        } catch {
+          Alert.alert("Error", "Failed to upload event photo");
+          setLoading(false);
+          return;
+        }
+      }
+      if (removePhotoRequested) {
+        nextImageUrl = null;
+      }
+
+      const updatePayload: Record<string, any> = {
+        title: title.trim(),
+        start_time: startDateTime.toISOString(),
+        end_time: endDateTime.toISOString(),
+        location_text: location.trim(),
+        capacity: capacityNum,
+        description: description.trim() || null,
+      };
+
+      if (nextImageUrl !== undefined) {
+        updatePayload.image_url = nextImageUrl;
+      }
+
       const { error } = await (supabase.from("events") as any)
-        .update({
-          title: title.trim(),
-          start_time: startDateTime.toISOString(),
-          end_time: endDateTime.toISOString(),
-          location_text: location.trim(),
-          capacity: capacityNum,
-          description: description.trim() || null,
-        })
+        .update(updatePayload)
         .eq("id", editId);
 
       setLoading(false);
@@ -336,9 +363,14 @@ export default function CreateEventScreen() {
             .catch((err) => console.warn("[push] update notify failed:", err));
         }
         setShowConfirm(false);
-        Alert.alert("Saved", "Event updated successfully.", [
-          { text: "OK", onPress: () => router.back() },
-        ]);
+        if (Platform.OS === "web") {
+          globalThis.alert?.("Event updated successfully.");
+          router.replace(`/event/${editId}`);
+        } else {
+          Alert.alert("Saved", "Event updated successfully.", [
+            { text: "OK", onPress: () => router.replace(`/event/${editId}`) },
+          ]);
+        }
       }
     } else {
       const {
@@ -415,19 +447,22 @@ export default function CreateEventScreen() {
   return (
     <View className="flex-1">
       <KeyboardAwareScrollView
-        className="flex-1 bg-osu-light"
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        className="flex-1 bg-white"
+        contentContainerStyle={{ paddingBottom: 32 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         enableOnAndroid
         extraScrollHeight={80}
       >
-        <Card>
-          <Text className="text-2xl font-bold text-osu-dark mb-6">
-            {isEditMode ? "Edit Event" : "Create New Event"}
-          </Text>
+        <View className="p-4" style={{ width: "100%", maxWidth: 920, alignSelf: "center" }}>
+          <View className="p-0 overflow-hidden bg-white">
+            <View className="p-5 pb-4">
+              <Text className="text-3xl font-bold text-osu-dark">
+                {isEditMode ? "Edit Event" : "Create New Event"}
+              </Text>
+            </View>
 
-          <View className="mb-4">
+            <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Title")}
             <TextInput
               className={getInputClassName("title")}
@@ -443,49 +478,49 @@ export default function CreateEventScreen() {
             {fieldErrors.title && (
               <Text className="text-red-500 text-sm mt-1">{fieldErrors.title}</Text>
             )}
-          </View>
+            </View>
 
-          <View className="mb-4">
+            <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Start Date")}
             <Pressable
-              className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3"
+              className="bg-white border border-gray-300 rounded-md px-4 py-3"
               onPress={() => openPicker("startDate")}
             >
               <Text className="text-base">{formatDate(startDateTime)}</Text>
             </Pressable>
-          </View>
+            </View>
 
-          <View className="mb-4">
+            <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Start Time")}
             <Pressable
-              className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3"
+              className="bg-white border border-gray-300 rounded-md px-4 py-3"
               onPress={() => openPicker("startTime")}
             >
               <Text className="text-base">{formatTime(startDateTime)}</Text>
             </Pressable>
-          </View>
+            </View>
 
-          <View className="mb-4">
+            <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("End Date")}
             <Pressable
-              className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3"
+              className="bg-white border border-gray-300 rounded-md px-4 py-3"
               onPress={() => openPicker("endDate")}
             >
               <Text className="text-base">{formatDate(endDateTime)}</Text>
             </Pressable>
-          </View>
+            </View>
 
-          <View className="mb-4">
+            <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("End Time")}
             <Pressable
-              className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3"
+              className="bg-white border border-gray-300 rounded-md px-4 py-3"
               onPress={() => openPicker("endTime")}
             >
               <Text className="text-base">{formatTime(endDateTime)}</Text>
             </Pressable>
-          </View>
+            </View>
 
-          <View className="mb-4">
+            <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Location")}
             <TextInput
               className={getInputClassName("location")}
@@ -501,25 +536,25 @@ export default function CreateEventScreen() {
             {fieldErrors.location && (
               <Text className="text-red-500 text-sm mt-1">{fieldErrors.location}</Text>
             )}
-          </View>
+            </View>
 
-          <View className="mb-4">
-            <Text className="text-osu-dark mb-2 font-semibold">Capacity (Optional)</Text>
+            <View className="px-5 py-4 border-b border-gray-200">
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Capacity (Optional)</Text>
             <TextInput
-              className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base"
+              className="bg-white border border-gray-300 rounded-md px-4 py-3 text-base text-osu-dark"
               placeholder="Leave blank for unlimited"
               value={capacity}
               onChangeText={setCapacity}
               keyboardType="number-pad"
             />
-          </View>
+            </View>
 
-          <View className="mb-6">
-            <Text className="text-osu-dark mb-2 font-semibold">
+            <View className="px-5 py-4 border-b border-gray-200">
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
               Description (Optional)
             </Text>
             <TextInput
-              className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base"
+              className="bg-white border border-gray-300 rounded-md px-4 py-3 text-base text-osu-dark"
               placeholder="Tell people about your event..."
               value={description}
               onChangeText={setDescription}
@@ -527,19 +562,25 @@ export default function CreateEventScreen() {
               numberOfLines={4}
               textAlignVertical="top"
             />
-          </View>
+            </View>
 
-          <View className="mb-6">
-            <Text className="text-osu-dark mb-2 font-semibold">
+            <View className="px-5 py-4 border-b border-gray-200">
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
               Event Photo (Optional)
             </Text>
             <TouchableOpacity
               onPress={pickEventPhoto}
-              className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden"
+              className="bg-white border border-gray-300 rounded-md overflow-hidden"
             >
               {eventPhoto ? (
                 <Image
                   source={{ uri: eventPhoto.uri }}
+                  style={{ width: "100%", aspectRatio: 16 / 9 }}
+                  resizeMode="cover"
+                />
+              ) : existingImageUrl ? (
+                <Image
+                  source={{ uri: existingImageUrl }}
                   style={{ width: "100%", aspectRatio: 16 / 9 }}
                   resizeMode="cover"
                 />
@@ -549,19 +590,29 @@ export default function CreateEventScreen() {
                 </View>
               )}
             </TouchableOpacity>
-            {eventPhoto && (
-              <TouchableOpacity onPress={() => setEventPhoto(null)} className="mt-1">
+            {(eventPhoto || existingImageUrl) && (
+              <TouchableOpacity
+                onPress={() => {
+                  setEventPhoto(null);
+                  setExistingImageUrl(null);
+                  setRemovePhotoRequested(true);
+                }}
+                className="mt-1"
+              >
                 <Text className="text-red-500 text-sm">Remove photo</Text>
               </TouchableOpacity>
             )}
-          </View>
+            </View>
 
-          <PrimaryButton
-            title={isEditMode ? "Review Changes" : "Review Event"}
-            onPress={handleReview}
-            loading={false}
-          />
-        </Card>
+            <View className="px-5 pt-6">
+              <PrimaryButton
+                title={isEditMode ? "Review Changes" : "Review Event"}
+                onPress={handleReview}
+                loading={false}
+              />
+            </View>
+          </View>
+        </View>
       </KeyboardAwareScrollView>
 
       <Modal
