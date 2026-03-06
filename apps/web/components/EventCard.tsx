@@ -29,50 +29,54 @@ export function EventCard({ event }: EventCardProps) {
 
   const attendeeCount = event.attendee_count || 0;
   const isUnlimitedCapacity = event.capacity == null;
-  const isFull = !isUnlimitedCapacity && attendeeCount >= event.capacity;
+  const capacityValue = event.capacity ?? 0;
+  const isFull = !isUnlimitedCapacity && attendeeCount >= capacityValue;
+  const hostName =
+    event.host?.display_name || event.host?.email.split("@")[0] || "host";
 
   return (
     <TouchableOpacity
       onPress={() => router.push(`/event/${event.id}`)}
       activeOpacity={0.7}
     >
-      <Card>
-        <View className="flex-row justify-between items-start mb-2">
-          <Text
-            className="text-lg font-bold text-osu-dark flex-1"
-            numberOfLines={2}
-          >
+      <Card
+        className="rounded-lg bg-white p-4"
+        style={{
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.12,
+          shadowRadius: 8,
+          elevation: 3,
+        }}
+      >
+        <View className="flex-row items-start justify-between mb-2">
+          <Text className="text-xl font-semibold text-osu-dark flex-1" numberOfLines={2}>
             {event.title}
           </Text>
           {isFull && (
-            <View className="bg-osu-scarlet px-2 py-1 rounded ml-2">
-              <Text className="text-white text-xs font-semibold">FULL</Text>
+            <View className="ml-3 px-2 py-1 rounded border border-osu-scarlet">
+              <Text className="text-xs font-semibold text-osu-scarlet">FULL</Text>
             </View>
           )}
         </View>
 
-        <View className="mb-2">
-          <Text className="text-osu-dark font-medium">
-            {formatDate(startDate)} • {formatTime(startDate)} -{" "}
-            {formatTime(endDate)}
-          </Text>
-        </View>
-
-        <Text className="text-gray-600 mb-3" numberOfLines={1}>
-          📍 {event.location_text}
+        <Text className="text-sm text-gray-500 mb-3" numberOfLines={1}>
+          {formatDate(startDate)} • {formatTime(startDate)} - {formatTime(endDate)}
         </Text>
 
-        <View className="flex-row justify-between items-center">
-          <Text className="text-gray-500 text-sm">
+        <Text className="text-base text-gray-700 mb-3" numberOfLines={1}>
+          @ {event.location_text}
+        </Text>
+
+        <View className="flex-row items-center justify-between pt-2 border-t border-gray-200">
+          <Text className="text-sm text-gray-500" numberOfLines={1}>
+            by {hostName}
+          </Text>
+          <Text className="text-sm font-semibold text-osu-scarlet">
             {isUnlimitedCapacity
               ? `${attendeeCount} attending`
-              : `${attendeeCount}/${event.capacity} attending`}
+              : `${attendeeCount}/${capacityValue} attending`}
           </Text>
-          {event.host && (
-            <Text className="text-gray-500 text-sm">
-              by {event.host.display_name || event.host.email.split("@")[0]}
-            </Text>
-          )}
         </View>
       </Card>
     </TouchableOpacity>

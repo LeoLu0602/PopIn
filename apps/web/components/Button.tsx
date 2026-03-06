@@ -19,14 +19,27 @@ export function PrimaryButton({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled || loading}
-      className={`bg-osu-scarlet py-4 px-6 rounded-xl items-center justify-center ${
+      className={`items-center justify-center ${
         disabled || loading ? "opacity-50" : ""
       }`}
+      style={{
+        backgroundColor: "#BB0000",
+        borderRadius: 12,
+        minHeight: 50,
+        paddingHorizontal: 18,
+        borderWidth: 1,
+        borderColor: "#A50000",
+        shadowColor: "#7A0000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.18,
+        shadowRadius: 6,
+        elevation: 2,
+      }}
     >
       {loading ? (
         <ActivityIndicator color="#FFFFFF" />
       ) : (
-        <Text className="text-white text-base font-semibold">{title}</Text>
+        <Text className="text-white text-base font-semibold tracking-wide">{title}</Text>
       )}
     </TouchableOpacity>
   );
@@ -42,14 +55,22 @@ export function SecondaryButton({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled || loading}
-      className={`border-2 border-osu-scarlet py-4 px-6 rounded-xl items-center justify-center ${
+      className={`items-center justify-center ${
         disabled || loading ? "opacity-50" : ""
       }`}
+      style={{
+        backgroundColor: "#FFFFFF",
+        borderRadius: 12,
+        minHeight: 50,
+        paddingHorizontal: 18,
+        borderWidth: 1,
+        borderColor: "#D1D5DB",
+      }}
     >
       {loading ? (
-        <ActivityIndicator color="#BB0000" />
+        <ActivityIndicator color="#6B7280" />
       ) : (
-        <Text className="text-osu-scarlet text-base font-semibold">
+        <Text className="text-gray-700 text-base font-semibold tracking-wide">
           {title}
         </Text>
       )}

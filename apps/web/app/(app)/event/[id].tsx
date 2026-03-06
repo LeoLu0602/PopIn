@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Image } from "react-native";
+import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Image, Platform } from "react-native";
 import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../../../lib/supabase";
-import { uploadEventPhoto } from "../../../lib/storage";
+import { requestFeedRefresh } from "../../../lib/feedRefresh";
 import type { EventWithDetails } from "shared";
-import { Card } from "../../../components/Card";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 import { getPostHog, buildEventProps } from "../../../lib/posthog";
 
@@ -25,7 +23,6 @@ export default function EventDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [updatingPhoto, setUpdatingPhoto] = useState(false);
   // Refs to prevent duplicate analytics fires
   const detailOpenedFired = useRef(false);
   const attendedFired = useRef(false);
@@ -164,8 +161,47 @@ export default function EventDetailScreen() {
     }
   };
 
+  const executeCancelEvent = async () => {
+    if (!event || !userId) return;
+
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.rpc("cancel_event", {
+        p_event_id: event.id,
+      } as any);
+
+      if (error) throw error;
+
+      notifyPush("cancel", event.id, userId);
+      requestFeedRefresh();
+      if (Platform.OS === "web") {
+        globalThis.alert?.("Your event has been canceled.");
+        router.back();
+      } else {
+        Alert.alert("Event Canceled", "Your event has been canceled.", [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      }
+    } catch (err: any) {
+      console.error("[cancel] error:", err);
+      Alert.alert("Error", `Failed to cancel event: ${err?.message ?? "unknown error"}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleCancelEvent = () => {
     if (!event || !userId) return;
+
+    if (Platform.OS === "web") {
+      const confirmed = globalThis.confirm?.(
+        "Are you sure you want to cancel this event? All attendees will be notified.",
+      );
+      if (confirmed) {
+        void executeCancelEvent();
+      }
+      return;
+    }
 
     Alert.alert(
       "Cancel Event",
@@ -175,66 +211,12 @@ export default function EventDetailScreen() {
         {
           text: "Cancel Event",
           style: "destructive",
-          onPress: async () => {
-            setActionLoading(true);
-            try {
-              const { error } = await supabase.rpc("cancel_event", {
-                p_event_id: event.id,
-              } as any);
-
-              if (error) throw error;
-
-              notifyPush("cancel", event.id, userId);
-              Alert.alert("Event Canceled", "Your event has been canceled.", [
-                { text: "OK", onPress: () => router.back() },
-              ]);
-            } catch (err: any) {
-              console.error("[cancel] error:", err);
-              Alert.alert("Error", `Failed to cancel event: ${err?.message ?? "unknown error"}`);
-            } finally {
-              setActionLoading(false);
-            }
+          onPress: () => {
+            void executeCancelEvent();
           },
         },
       ],
     );
-  };
-
-const handleChangePhoto = async () => {
-    if (!event || !userId) return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission Denied", "Photo library access is required.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [16, 9],
-      quality: 0.8,
-      base64: true,
-    });
-    if (result.canceled || !result.assets[0]?.base64) return;
-
-    const asset = result.assets[0];
-    setUpdatingPhoto(true);
-    try {
-      const imageUrl = await uploadEventPhoto(userId, asset.base64!, asset.mimeType ?? "image/jpeg");
-      const { error } = await (supabase.from("events") as any)
-        .update({ image_url: imageUrl })
-        .eq("id", event.id);
-      if (error) {
-        Alert.alert("Error", "Failed to update photo");
-        console.error(error);
-      } else {
-        fetchEvent();
-      }
-    } catch {
-      Alert.alert("Error", "Failed to upload photo");
-    } finally {
-      setUpdatingPhoto(false);
-    }
-
   };
 
   if (!id) return null;
@@ -269,6 +251,22 @@ const handleChangePhoto = async () => {
     });
   };
 
+  const formatDateLabel = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatTimeLabel = (date: Date) => {
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
   const isFull =
     event.capacity != null && event.attendee_count! >= event.capacity;
   const isHost = userId === event.host_id;
@@ -286,138 +284,111 @@ const handleChangePhoto = async () => {
           : `${spotsLeft} spots left`;
 
   return (
-    <ScrollView className="flex-1 bg-osu-light">
-      <View className="p-4">
-        <Card>
-          {event.image_url ? (
-            <View style={{ marginBottom: 16 }}>
-              <Image
-                source={{ uri: event.image_url }}
-                style={{ width: "100%", aspectRatio: 16 / 9, borderRadius: 8 }}
-                resizeMode="cover"
-              />
-              {isHost && (
-                <TouchableOpacity
-                  onPress={handleChangePhoto}
-                  disabled={updatingPhoto}
-                  className="mt-1"
-                >
-                  {updatingPhoto
-                    ? <ActivityIndicator size="small" color="#BB0000" />
-                    : <Text className="text-osu-scarlet text-sm">Change photo</Text>
-                  }
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : isHost && (
-            <TouchableOpacity
-              onPress={handleChangePhoto}
-              disabled={updatingPhoto}
-              className="bg-gray-50 border border-gray-200 rounded-lg items-center justify-center py-8 mb-4"
-            >
-              {updatingPhoto
-                ? <ActivityIndicator size="small" color="#BB0000" />
-                : <Text className="text-gray-400 text-sm">Tap to add a photo</Text>
-              }
-            </TouchableOpacity>
-          )}
-          <View className="mb-4">
-            <Text className="text-2xl font-bold text-osu-dark mb-2">
+    <ScrollView className="flex-1 bg-white">
+      <View className="p-4" style={{ width: "100%", maxWidth: 920, alignSelf: "center" }}>
+        <View className="p-0 overflow-hidden">
+          <View className="p-5 pb-4">
+            <Text className="text-3xl font-bold text-osu-dark mb-2">
               {event.title}
             </Text>
-            {isFull && (
-              <View className="bg-osu-scarlet px-3 py-1 rounded self-start">
-                <Text className="text-white font-semibold">FULL</Text>
-              </View>
-            )}
-          </View>
-
-          <View className="mb-4">
-            <Text className="text-gray-600 font-semibold mb-1">📅 When</Text>
-            <Text className="text-osu-dark">
-              Starts: {formatDateTime(startDate)}
-            </Text>
-            <Text className="text-osu-dark">
-              Ends: {formatDateTime(endDate)}
-            </Text>
-          </View>
-
-          <View className="mb-4">
-            <Text className="text-gray-600 font-semibold mb-1">📍 Where</Text>
-            <Text className="text-osu-dark">{event.location_text}</Text>
-          </View>
-
-          <View className="mb-4">
-            <Text className="text-gray-600 font-semibold mb-1">
-              👥 Capacity
-            </Text>
-            <Text className="text-osu-dark">{scarcityCopy}</Text>
-          </View>
-
-          {event.description && (
-            <View className="mb-4">
-              <Text className="text-gray-600 font-semibold mb-1">
-                📝 Description
-              </Text>
-              <Text className="text-osu-dark">{event.description}</Text>
+            <View className="flex-row items-center">
+              {isFull && (
+                <Text className="text-osu-scarlet font-semibold text-xs mr-2">FULL</Text>
+              )}
+              <Text className="text-gray-700 text-xs font-medium">{scarcityCopy}</Text>
             </View>
-          )}
-
-          <View className="mb-6">
-            <Text className="text-gray-600 font-semibold mb-1">🎯 Host</Text>
-            <TouchableOpacity onPress={() => router.push(`/profile/${event.host_id}`)}>
-              <Text className="text-osu-scarlet underline">
-                {event.host?.display_name || event.host?.email.split("@")[0]}
-              </Text>
-            </TouchableOpacity>
-            {isFirstTimeHost && (
-              <View className="mt-2 self-start bg-osu-light px-2 py-1 rounded-full">
-                <Text className="text-osu-dark text-xs font-medium">First-time host 🆕</Text>
-              </View>
-            )}
           </View>
 
-          {!isHost &&
-            (event.is_joined ? (
-              <SecondaryButton
-                title="Leave Event"
-                onPress={handleLeave}
-                loading={actionLoading}
+          {event.image_url ? (
+            <View className="px-5 py-4">
+              <Image
+                source={{ uri: event.image_url }}
+                style={{ width: "100%", aspectRatio: 16 / 9 }}
+                resizeMode="cover"
               />
-            ) : (
-              <View>
-                <PrimaryButton
-                  title="Join Event"
-                  onPress={handleJoin}
-                  disabled={isFull}
-                  loading={actionLoading}
-                />
-                <Text className="text-gray-400 text-xs text-center mt-1">
-                  You can leave anytime
-                </Text>
-              </View>
-            ))}
-
-          {isHost && (
-            <View className="bg-osu-light p-4 rounded-lg">
-              <Text className="text-osu-dark font-semibold mb-3">
-                You are hosting this event
-              </Text>
-              <View style={{ gap: 10 }}>
-                <SecondaryButton
-                  title="Edit Event"
-                  onPress={() => router.push(`/(app)/edit-event?editId=${event.id}`)}
-                  loading={false}
-                />
-                <SecondaryButton
-                  title="Cancel Event"
-                  onPress={handleCancelEvent}
-                  loading={actionLoading}
-                />
-              </View>
+            </View>
+          ) : (
+            <View className="items-center justify-center py-10">
+              <Text className="text-gray-500 text-sm">No photo yet</Text>
             </View>
           )}
-        </Card>
+
+          <View className="p-5">
+            <View className="pb-4 border-b border-gray-200">
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">When</Text>
+              <Text className="text-osu-dark font-medium mt-1">{formatDateLabel(startDate)}</Text>
+              <View className="flex-row items-center mt-2">
+                <Text className="text-gray-700 font-medium">{formatTimeLabel(startDate)}</Text>
+                <Text className="text-gray-400 mx-2">-</Text>
+                <Text className="text-gray-700 font-medium">{formatTimeLabel(endDate)}</Text>
+              </View>
+            </View>
+
+            <View className="py-4 border-b border-gray-200">
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Where</Text>
+              <Text className="text-osu-dark font-medium mt-1">@ {event.location_text}</Text>
+            </View>
+
+            <View className="py-4 border-b border-gray-200">
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Host</Text>
+              <TouchableOpacity onPress={() => router.push(`/profile/${event.host_id}`)}>
+                <Text className="text-osu-scarlet font-semibold mt-1">
+                  {event.host?.display_name || event.host?.email.split("@")[0]}
+                </Text>
+              </TouchableOpacity>
+              {isFirstTimeHost && (
+                <Text className="text-gray-500 text-xs mt-1">First-time host</Text>
+              )}
+            </View>
+
+            {event.description && (
+              <View className="py-4 border-b border-gray-200">
+                <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Description</Text>
+                <Text className="text-osu-dark leading-6">{event.description}</Text>
+              </View>
+            )}
+
+            <View className="pt-6 mt-2">
+              {!isHost ? (
+                <View style={{ gap: 10 }}>
+                  {event.is_joined ? (
+                    <PrimaryButton
+                      title="Leave Event"
+                      onPress={handleLeave}
+                      loading={actionLoading}
+                    />
+                  ) : (
+                    <>
+                      <PrimaryButton
+                        title="Join Event"
+                        onPress={handleJoin}
+                        disabled={isFull}
+                        loading={actionLoading}
+                      />
+                      <Text className="text-gray-400 text-xs text-center">
+                        You can leave anytime
+                      </Text>
+                    </>
+                  )}
+                </View>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  <PrimaryButton
+                    title="Edit Event"
+                    onPress={() => router.push(`/(app)/edit-event?editId=${event.id}`)}
+                    loading={false}
+                  />
+                  <SecondaryButton
+                    title="Cancel Event"
+                    onPress={handleCancelEvent}
+                    loading={actionLoading}
+                  />
+                  <Text className="text-gray-500 text-xs text-center mt-1">You are hosting this event</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );

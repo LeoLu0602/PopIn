@@ -141,3 +141,4 @@ RLS is enabled on all tables. Cancel uses a `SECURITY DEFINER` RPC (`cancel_even
 - **RLS errors**: ensure all migrations ran; verify the user is authenticated
 - **TypeScript errors**: run `pnpm install` from root, restart the TS server
 - **Web won’t start**: ensure `apps/web/.env` exists and run from repo root (`pnpm web`)
+- **Web route 404 on refresh (e.g. `/feed`)**: configure SPA fallback rewrites in your host so unknown paths return `index.html` (this repo includes `vercel.json` at repo root and `apps/web/vercel.json`; keep the one that matches your deploy root)
