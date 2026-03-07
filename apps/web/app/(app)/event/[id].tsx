@@ -25,7 +25,7 @@ export default function EventDetailScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   // Refs to prevent duplicate analytics fires
   const detailOpenedFired = useRef(false);
-  const attendedFired = useRef(false);
+  // const attendedFired = useRef(false);
   const joinClickedInFlight = useRef(false);
 
   useEffect(() => {
@@ -71,14 +71,14 @@ export default function EventDetailScreen() {
       }
 
       // attended: event has ended AND user is still a participant
-      const hasEnded = new Date(data.end_time) < new Date();
-      const isParticipant = userId
-        ? data.event_members?.some((m: any) => m.user_id === userId)
-        : false;
-      if (hasEnded && isParticipant && !attendedFired.current) {
-        attendedFired.current = true;
-        getPostHog().capture("attended", buildEventProps(data));
-      }
+      // const hasEnded = new Date(data.end_time) < new Date();
+      // const isParticipant = userId
+      //   ? data.event_members?.some((m: any) => m.user_id === userId)
+      //   : false;
+      // if (hasEnded && isParticipant && !attendedFired.current) {
+      //   attendedFired.current = true;
+      //   getPostHog().capture("attended", buildEventProps(data));
+      // }
     }
 
     setLoading(false);

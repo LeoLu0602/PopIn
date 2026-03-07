@@ -21,6 +21,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import { uploadEventPhoto } from "../../../lib/storage";
 import { requestFeedRefresh } from "../../../lib/feedRefresh";
+import { getPostHog } from "../../../lib/posthog";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 
 type RequiredField = "title" | "location";
@@ -499,6 +500,13 @@ export default function CreateEventScreen() {
         Alert.alert("Error", "Failed to create event");
         console.error(error);
       } else {
+        getPostHog().capture('event_created', {
+          event_id: (eventData as any)?.id,
+          event_title: title.trim(),
+          event_start_time: startDateTime.toISOString(),
+          event_location: location.trim(),
+          creator_id: user.id,
+        });
         setShowConfirm(false);
         Alert.alert("Success", "Event created successfully!");
         const resetNow = new Date();

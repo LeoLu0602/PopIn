@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -11,6 +11,8 @@ import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
 import type { EventWithDetails } from 'shared';
 import { EventCard } from '../../../components/EventCard';
+import { VisibilityTracker } from '../../../components/VisibilityTracker';
+import { getPostHog, buildEventProps } from '../../../lib/posthog';
 import { consumeFeedRefreshRequest } from '../../../lib/feedRefresh';
 
 type FilterType = 'all' | 'next3hours' | 'today';
@@ -23,6 +25,9 @@ const FILTER_OPTIONS: Array<{ value: FilterType; label: string }> = [
 
 const feedCache: Partial<Record<FilterType, EventWithDetails[]>> = {};
 
+// Module-level flag: fires feed_opened only once per browser session
+let feedOpenedFired = false;
+
 const compareByStartTime = (a: EventWithDetails, b: EventWithDetails) =>
     new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
 
@@ -33,11 +38,20 @@ export default function FeedScreen() {
     const [loading, setLoading] = useState(() => !feedCache.all);
     const [filter, setFilter] = useState<FilterType>('all');
     const [userId, setUserId] = useState<string | null>(null);
+    // Dedup guard: track event IDs that have already fired event_viewed this session
+    const viewedIdsRef = useRef(new Set<string>());
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data }) => {
             setUserId(data.user?.id || null);
         });
+    }, []);
+
+    useEffect(() => {
+        if (!feedOpenedFired) {
+            feedOpenedFired = true;
+            getPostHog().capture('feed_opened');
+        }
     }, []);
 
     const fetchEvents = useCallback(
@@ -179,9 +193,19 @@ export default function FeedScreen() {
                 )}
 
                 {events.map((event) => (
-                    <View key={event.id} className="mx-4 mb-4">
-                        <EventCard event={event} />
-                    </View>
+                    <VisibilityTracker
+                        key={event.id}
+                        onVisible={() => {
+                            if (!viewedIdsRef.current.has(event.id)) {
+                                viewedIdsRef.current.add(event.id);
+                                getPostHog().capture('event_viewed', buildEventProps(event));
+                            }
+                        }}
+                    >
+                        <View className="mx-4 mb-4">
+                            <EventCard event={event} />
+                        </View>
+                    </VisibilityTracker>
                 ))}
             </ScrollView>
         </View>

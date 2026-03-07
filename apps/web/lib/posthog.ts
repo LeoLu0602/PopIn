@@ -1,45 +1,48 @@
-import PostHog from "posthog-react-native";
+import posthog from "posthog-js";
 
-type AnalyticsClient = Pick<PostHog, "capture" | "identify">;
+type AnalyticsClient = {
+  capture: (event: string, properties?: Record<string, unknown>) => void;
+  identify: (distinctId: string, properties?: Record<string, unknown>) => void;
+};
 
 const noopClient: AnalyticsClient = {
   capture: () => {},
   identify: () => {},
 };
 
+let initialized = false;
 let missingConfigWarned = false;
 
-// Singleton client — initialized once for the entire app lifetime
-let _client: AnalyticsClient | null = null;
-
 export function getPostHog(): AnalyticsClient {
-  if (!_client) {
-    // @ts-expect-error - Expo Metro resolves EXPO_PUBLIC_* at build time
+  if (!initialized) {
     const apiKey = process.env.EXPO_PUBLIC_POSTHOG_API_KEY as string | undefined;
-    // @ts-expect-error - Expo Metro resolves EXPO_PUBLIC_* at build time
     const host = process.env.EXPO_PUBLIC_POSTHOG_HOST as string | undefined;
 
     if (!apiKey || !host) {
       if (!missingConfigWarned) {
-        console.warn("[posthog] Missing EXPO_PUBLIC_POSTHOG_API_KEY or EXPO_PUBLIC_POSTHOG_HOST, analytics disabled");
+        console.warn("[posthog] env vars missing — analytics disabled");
         missingConfigWarned = true;
       }
-      _client = noopClient;
-      return _client;
+      return noopClient;
     }
 
     try {
-      _client = new PostHog(apiKey, {
-        host,
-        flushAt: 1,
-        flushInterval: 0,
-      }) as AnalyticsClient;
+      posthog.init(apiKey, {
+        api_host: host,
+        autocapture: false,
+        capture_pageview: false,
+      });
+      initialized = true;
     } catch (error) {
-      console.warn("[posthog] Failed to initialize client, analytics disabled", error);
-      _client = noopClient;
+      console.error("[posthog] init failed:", error);
+      return noopClient;
     }
   }
-  return _client;
+
+  return {
+    capture: (event, properties) => posthog.capture(event, properties),
+    identify: (distinctId, properties) => posthog.identify(distinctId, properties),
+  };
 }
 
 // Convenience: build the standard event properties payload
