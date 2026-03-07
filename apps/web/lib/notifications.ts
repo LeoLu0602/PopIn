@@ -12,6 +12,11 @@ import { supabase } from "./supabase";
  * handles permission denial gracefully.
  */
 export async function registerForPushNotifications(userId: string): Promise<void> {
+  if (Platform.OS === "web") {
+    console.log("[notifications] Push notifications are skipped on web");
+    return;
+  }
+
   if (!Device.isDevice) {
     console.log("[notifications] Push notifications not supported on simulator");
     return;
