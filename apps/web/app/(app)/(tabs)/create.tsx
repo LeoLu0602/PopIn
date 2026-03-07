@@ -20,6 +20,7 @@ import DateTimePicker, {
 import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import { uploadEventPhoto } from "../../../lib/storage";
+import { requestFeedRefresh } from "../../../lib/feedRefresh";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 
 type RequiredField = "title" | "location";
@@ -46,8 +47,46 @@ const isSameDay = (a: Date, b: Date): boolean =>
   a.getMonth() === b.getMonth() &&
   a.getDate() === b.getDate();
 
+const toDateInputValue = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const toTimeInputValue = (date: Date): string => {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
+const parseDateInputValue = (value: string): Date | null => {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+};
+
+const applyTimeToDate = (baseDate: Date, value: string): Date | null => {
+  const [hours, minutes] = value.split(":").map(Number);
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return null;
+  }
+
+  const next = new Date(baseDate);
+  next.setHours(hours, minutes, 0, 0);
+  return next;
+};
+
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000;
+const PLACEHOLDER_COLOR = "#9ca3af";
 
 export default function CreateEventScreen() {
   const { editId } = useLocalSearchParams<{ editId?: string }>();
@@ -210,66 +249,105 @@ export default function CreateEventScreen() {
     }
   };
 
+  const applyPickerValue = (target: PickerTarget, selectedValue: Date) => {
+    if (target === "startDate") {
+      const updated = new Date(startDateTime);
+      updated.setFullYear(
+        selectedValue.getFullYear(),
+        selectedValue.getMonth(),
+        selectedValue.getDate(),
+      );
+      setStartDateTime(updated);
+      checkStartWithin48Hours(updated);
+      return;
+    }
+
+    if (target === "startTime") {
+      const updated = new Date(startDateTime);
+      updated.setHours(selectedValue.getHours(), selectedValue.getMinutes(), 0, 0);
+      setStartDateTime(updated);
+      checkStartWithin48Hours(updated);
+      return;
+    }
+
+    if (target === "endDate") {
+      const updated = new Date(endDateTime);
+      updated.setFullYear(
+        selectedValue.getFullYear(),
+        selectedValue.getMonth(),
+        selectedValue.getDate(),
+      );
+      if (updated <= startDateTime) {
+        setEndDateTime(new Date(startDateTime.getTime() + DEFAULT_EVENT_DURATION_MS));
+        return;
+      }
+      setEndDateTime(updated);
+      return;
+    }
+
+    const updated = new Date(endDateTime);
+    updated.setHours(selectedValue.getHours(), selectedValue.getMinutes(), 0, 0);
+    if (updated <= startDateTime) {
+      setEndDateTime(new Date(startDateTime.getTime() + DEFAULT_EVENT_DURATION_MS));
+      return;
+    }
+    setEndDateTime(updated);
+  };
+
   const handlePickerValueChange = (
-    _event: DateTimePickerEvent,
+    event: DateTimePickerEvent,
     selected?: Date,
   ) => {
-    if (selected) {
-      setPickerValue(selected);
+    const timestamp = (event as any)?.nativeEvent?.timestamp;
+    const nextValue = selected ?? (typeof timestamp === "number" ? new Date(timestamp) : undefined);
+
+    if (Platform.OS === "android") {
+      if (event.type === "dismissed") {
+        closePicker();
+        return;
+      }
+
+      if (nextValue && activePicker) {
+        applyPickerValue(activePicker, nextValue);
+      }
+
+      closePicker();
+      return;
+    }
+
+    if (nextValue) {
+      setPickerValue(nextValue);
+
+      if (Platform.OS === "web" && activePicker) {
+        applyPickerValue(activePicker, nextValue);
+      }
     }
   };
 
   const applyPickerSelection = () => {
     if (!activePicker) return;
 
-    if (activePicker === "startDate") {
-      const updated = new Date(startDateTime);
-      updated.setFullYear(
-        pickerValue.getFullYear(),
-        pickerValue.getMonth(),
-        pickerValue.getDate(),
-      );
-      setStartDateTime(updated);
-      checkStartWithin48Hours(updated);
-      closePicker();
-      return;
-    }
-
-    if (activePicker === "startTime") {
-      const updated = new Date(startDateTime);
-      updated.setHours(pickerValue.getHours(), pickerValue.getMinutes(), 0, 0);
-      setStartDateTime(updated);
-      checkStartWithin48Hours(updated);
-      closePicker();
-      return;
-    }
-
-    if (activePicker === "endDate") {
-      const updated = new Date(endDateTime);
-      updated.setFullYear(
-        pickerValue.getFullYear(),
-        pickerValue.getMonth(),
-        pickerValue.getDate(),
-      );
-      if (updated <= startDateTime) {
-        setEndDateTime(new Date(startDateTime.getTime() + DEFAULT_EVENT_DURATION_MS));
-        closePicker();
-        return;
-      }
-      setEndDateTime(updated);
-      closePicker();
-      return;
-    }
-
-    const updated = new Date(endDateTime);
-    updated.setHours(pickerValue.getHours(), pickerValue.getMinutes(), 0, 0);
-    if (updated <= startDateTime) {
-      setEndDateTime(new Date(startDateTime.getTime() + DEFAULT_EVENT_DURATION_MS));
-      closePicker();
-      return;
-    }
-    setEndDateTime(updated);
+    applyPickerValue(activePicker, pickerValue);
     closePicker();
+  };
+
+  const handleWebDateInputChange = (
+    target: "startDate" | "endDate",
+    value: string,
+  ) => {
+    const parsed = parseDateInputValue(value);
+    if (!parsed) return;
+    applyPickerValue(target, parsed);
+  };
+
+  const handleWebTimeInputChange = (
+    target: "startTime" | "endTime",
+    value: string,
+  ) => {
+    const baseDate = target === "startTime" ? startDateTime : endDateTime;
+    const parsed = applyTimeToDate(baseDate, value);
+    if (!parsed) return;
+    applyPickerValue(target, parsed);
   };
 
   const handleReview = () => {
@@ -431,6 +509,7 @@ export default function CreateEventScreen() {
         setCapacity("");
         setDescription("");
         setEventPhoto(null);
+        requestFeedRefresh();
         router.replace("/(app)/(tabs)/feed");
       }
     }
@@ -467,6 +546,7 @@ export default function CreateEventScreen() {
             <TextInput
               className={getInputClassName("title")}
               placeholder="Event name"
+              placeholderTextColor={PLACEHOLDER_COLOR}
               value={title}
               onChangeText={(value) => {
                 setTitle(value);
@@ -482,42 +562,98 @@ export default function CreateEventScreen() {
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Start Date")}
-            <Pressable
-              className="bg-white border border-gray-300 rounded-md px-4 py-3"
-              onPress={() => openPicker("startDate")}
-            >
-              <Text className="text-base">{formatDate(startDateTime)}</Text>
-            </Pressable>
+            {Platform.OS === "web" ? (
+              <input
+                type="date"
+                value={toDateInputValue(startDateTime)}
+                min={toDateInputValue(new Date())}
+                onChange={(event) =>
+                  handleWebDateInputChange("startDate", event.currentTarget.value)
+                }
+                className="web-datetime-input"
+              />
+            ) : (
+              <Pressable
+                className="bg-white border border-gray-300 rounded-md px-4 py-3"
+                onPress={() => openPicker("startDate")}
+              >
+                <Text className="text-base">{formatDate(startDateTime)}</Text>
+              </Pressable>
+            )}
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Start Time")}
-            <Pressable
-              className="bg-white border border-gray-300 rounded-md px-4 py-3"
-              onPress={() => openPicker("startTime")}
-            >
-              <Text className="text-base">{formatTime(startDateTime)}</Text>
-            </Pressable>
+            {Platform.OS === "web" ? (
+              <input
+                type="time"
+                value={toTimeInputValue(startDateTime)}
+                min={
+                  isSameDay(startDateTime, new Date())
+                    ? toTimeInputValue(new Date())
+                    : undefined
+                }
+                onChange={(event) =>
+                  handleWebTimeInputChange("startTime", event.currentTarget.value)
+                }
+                className="web-datetime-input"
+              />
+            ) : (
+              <Pressable
+                className="bg-white border border-gray-300 rounded-md px-4 py-3"
+                onPress={() => openPicker("startTime")}
+              >
+                <Text className="text-base">{formatTime(startDateTime)}</Text>
+              </Pressable>
+            )}
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("End Date")}
-            <Pressable
-              className="bg-white border border-gray-300 rounded-md px-4 py-3"
-              onPress={() => openPicker("endDate")}
-            >
-              <Text className="text-base">{formatDate(endDateTime)}</Text>
-            </Pressable>
+            {Platform.OS === "web" ? (
+              <input
+                type="date"
+                value={toDateInputValue(endDateTime)}
+                min={toDateInputValue(startDateTime)}
+                onChange={(event) =>
+                  handleWebDateInputChange("endDate", event.currentTarget.value)
+                }
+                className="web-datetime-input"
+              />
+            ) : (
+              <Pressable
+                className="bg-white border border-gray-300 rounded-md px-4 py-3"
+                onPress={() => openPicker("endDate")}
+              >
+                <Text className="text-base">{formatDate(endDateTime)}</Text>
+              </Pressable>
+            )}
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("End Time")}
-            <Pressable
-              className="bg-white border border-gray-300 rounded-md px-4 py-3"
-              onPress={() => openPicker("endTime")}
-            >
-              <Text className="text-base">{formatTime(endDateTime)}</Text>
-            </Pressable>
+            {Platform.OS === "web" ? (
+              <input
+                type="time"
+                value={toTimeInputValue(endDateTime)}
+                min={
+                  isSameDay(endDateTime, startDateTime)
+                    ? toTimeInputValue(startDateTime)
+                    : undefined
+                }
+                onChange={(event) =>
+                  handleWebTimeInputChange("endTime", event.currentTarget.value)
+                }
+                className="web-datetime-input"
+              />
+            ) : (
+              <Pressable
+                className="bg-white border border-gray-300 rounded-md px-4 py-3"
+                onPress={() => openPicker("endTime")}
+              >
+                <Text className="text-base">{formatTime(endDateTime)}</Text>
+              </Pressable>
+            )}
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
@@ -525,6 +661,7 @@ export default function CreateEventScreen() {
             <TextInput
               className={getInputClassName("location")}
               placeholder="e.g., Thompson Library, Room 150"
+              placeholderTextColor={PLACEHOLDER_COLOR}
               value={location}
               onChangeText={(value) => {
                 setLocation(value);
@@ -543,6 +680,7 @@ export default function CreateEventScreen() {
             <TextInput
               className="bg-white border border-gray-300 rounded-md px-4 py-3 text-base text-osu-dark"
               placeholder="Leave blank for unlimited"
+              placeholderTextColor={PLACEHOLDER_COLOR}
               value={capacity}
               onChangeText={setCapacity}
               keyboardType="number-pad"
@@ -556,6 +694,7 @@ export default function CreateEventScreen() {
             <TextInput
               className="bg-white border border-gray-300 rounded-md px-4 py-3 text-base text-osu-dark"
               placeholder="Tell people about your event..."
+              placeholderTextColor={PLACEHOLDER_COLOR}
               value={description}
               onChangeText={setDescription}
               multiline
@@ -615,48 +754,50 @@ export default function CreateEventScreen() {
         </View>
       </KeyboardAwareScrollView>
 
-      <Modal
-        visible={activePicker !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={closePicker}
-      >
-        <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 16 }}>
-          <View className="bg-white rounded-2xl p-5">
-            {activePicker && (
-              <>
-                <Text className="text-lg font-bold text-osu-dark mb-4">
-                  {getPickerTitle(activePicker)}
-                </Text>
-                <DateTimePicker
-                  value={pickerValue}
-                  mode={getPickerMode(activePicker)}
-                  display={pickerDisplay}
-                  minimumDate={getPickerMinimumDate(activePicker)}
-                  onChange={handlePickerValueChange}
-                  {...(Platform.OS === "ios"
-                    ? { themeVariant: "light" as const, textColor: "#111827" }
-                    : {})}
-                />
-                <View className="mt-5 flex-row">
-                  <Pressable
-                    className="flex-1 border border-osu-scarlet rounded-xl py-3 mr-2 items-center"
-                    onPress={closePicker}
-                  >
-                    <Text className="text-osu-scarlet font-semibold">Cancel</Text>
-                  </Pressable>
-                  <Pressable
-                    className="flex-1 bg-osu-scarlet rounded-xl py-3 ml-2 items-center"
-                    onPress={applyPickerSelection}
-                  >
-                    <Text className="text-white font-semibold">Done</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
+      {Platform.OS !== "web" && (
+        <Modal
+          visible={activePicker !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={closePicker}
+        >
+          <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 16 }}>
+            <View className="bg-white rounded-2xl p-5">
+              {activePicker && (
+                <>
+                  <Text className="text-lg font-bold text-osu-dark mb-4">
+                    {getPickerTitle(activePicker)}
+                  </Text>
+                  <DateTimePicker
+                    value={pickerValue}
+                    mode={getPickerMode(activePicker)}
+                    display={pickerDisplay}
+                    minimumDate={getPickerMinimumDate(activePicker)}
+                    onChange={handlePickerValueChange}
+                    {...(Platform.OS === "ios"
+                      ? { themeVariant: "light" as const, textColor: "#111827" }
+                      : {})}
+                  />
+                  <View className="mt-5 flex-row">
+                    <Pressable
+                      className="flex-1 border border-osu-scarlet rounded-xl py-3 mr-2 items-center"
+                      onPress={closePicker}
+                    >
+                      <Text className="text-osu-scarlet font-semibold">Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      className="flex-1 bg-osu-scarlet rounded-xl py-3 ml-2 items-center"
+                      onPress={applyPickerSelection}
+                    >
+                      <Text className="text-white font-semibold">Done</Text>
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       <Modal
         visible={showConfirm}
