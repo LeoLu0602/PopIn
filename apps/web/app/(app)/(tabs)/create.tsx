@@ -745,9 +745,22 @@ export default function CreateEventScreen() {
               placeholder="Leave blank for unlimited"
               placeholderTextColor={PLACEHOLDER_COLOR}
               value={capacity}
-              onChangeText={setCapacity}
+              onChangeText={(value) => {
+                setCapacity(value);
+              }}
               keyboardType="number-pad"
             />
+            {(() => {
+              const num = parseInt(capacity.trim(), 10);
+              if (capacity.trim() && !isNaN(num) && num < 2) {
+                return (
+                  <Text className="text-amber-600 text-sm mt-1">
+                    Capacity must be at least 2 (you + 1 attendee). Leave blank for unlimited.
+                  </Text>
+                );
+              }
+              return null;
+            })()}
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
