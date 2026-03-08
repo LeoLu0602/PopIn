@@ -13,10 +13,6 @@ import {
   ScrollView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import { uploadEventPhoto } from "../../../lib/storage";
@@ -117,8 +113,6 @@ export default function CreateEventScreen() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [eventPhoto, setEventPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
 
-  const [activePicker, setActivePicker] = useState<PickerTarget | null>(null);
-  const [pickerValue, setPickerValue] = useState(oneHourLater);
   const [showConfirm, setShowConfirm] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const nowMinute = toMinutePrecision(new Date());
@@ -131,61 +125,6 @@ export default function CreateEventScreen() {
       setEndDateTime(new Date(startDateTime.getTime() + DEFAULT_EVENT_DURATION_MS));
     }
   }, [startDateTime, endDateTime]);
-
-  const getPickerTitle = (target: PickerTarget): string => {
-    switch (target) {
-      case "startDate":
-        return "Select Start Date";
-      case "startTime":
-        return "Select Start Time";
-      case "endDate":
-        return "Select End Date";
-      case "endTime":
-        return "Select End Time";
-      default:
-        return "Select";
-    }
-  };
-
-  const getPickerMode = (target: PickerTarget): "date" | "time" =>
-    target === "startDate" || target === "endDate" ? "date" : "time";
-
-  const pickerDisplay = Platform.OS === "ios" ? "spinner" : "default";
-
-  const getPickerMinimumDate = (target: PickerTarget): Date | undefined => {
-    if (target === "startDate") return new Date();
-    if (target === "startTime") {
-      return isSameDay(startDateTime, new Date()) ? new Date() : undefined;
-    }
-    if (target === "endDate") return startDateTime;
-    if (target === "endTime") {
-      return isSameDay(endDateTime, startDateTime) ? startDateTime : undefined;
-    }
-    return undefined;
-  };
-
-  const getPickerMaximumDate = (target: PickerTarget): Date | undefined => {
-    if (target === "startDate") return maxStartDateTime;
-    if (target === "startTime") {
-      return isSameDay(startDateTime, maxStartDateTime)
-        ? maxStartDateTime
-        : undefined;
-    }
-    return undefined;
-  };
-
-  const openPicker = (target: PickerTarget) => {
-    setActivePicker(target);
-    if (target === "startDate" || target === "startTime") {
-      setPickerValue(startDateTime);
-      return;
-    }
-    setPickerValue(endDateTime);
-  };
-
-  const closePicker = () => {
-    setActivePicker(null);
-  };
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -303,43 +242,6 @@ export default function CreateEventScreen() {
       return;
     }
     setEndDateTime(updated);
-  };
-
-  const handlePickerValueChange = (
-    event: DateTimePickerEvent,
-    selected?: Date,
-  ) => {
-    const timestamp = (event as any)?.nativeEvent?.timestamp;
-    const nextValue = selected ?? (typeof timestamp === "number" ? new Date(timestamp) : undefined);
-
-    if (Platform.OS === "android") {
-      if (event.type === "dismissed") {
-        closePicker();
-        return;
-      }
-
-      if (nextValue && activePicker) {
-        applyPickerValue(activePicker, nextValue);
-      }
-
-      closePicker();
-      return;
-    }
-
-    if (nextValue) {
-      setPickerValue(nextValue);
-
-      if (Platform.OS === "web" && activePicker) {
-        applyPickerValue(activePicker, nextValue);
-      }
-    }
-  };
-
-  const applyPickerSelection = () => {
-    if (!activePicker) return;
-
-    applyPickerValue(activePicker, pickerValue);
-    closePicker();
   };
 
   const handleWebDateInputChange = (
@@ -566,13 +468,10 @@ export default function CreateEventScreen() {
 
   return (
     <View className="flex-1">
-      <KeyboardAwareScrollView
+      <ScrollView
         className="flex-1 bg-white"
         contentContainerStyle={{ paddingBottom: 32 }}
-        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        enableOnAndroid
-        extraScrollHeight={80}
       >
         <View className="p-4" style={{ width: "100%", maxWidth: 920, alignSelf: "center" }}>
           <View className="p-0 overflow-hidden bg-white">
@@ -603,104 +502,68 @@ export default function CreateEventScreen() {
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Start Date")}
-            {Platform.OS === "web" ? (
-              <input
-                type="date"
-                value={toDateInputValue(startDateTime)}
-                min={toDateInputValue(new Date())}
-                max={toDateInputValue(maxStartDateTime)}
-                onChange={(event) =>
-                  handleWebDateInputChange("startDate", event.currentTarget.value)
-                }
-                className="web-datetime-input"
-              />
-            ) : (
-              <Pressable
-                className="bg-white border border-gray-300 rounded-md px-4 py-3"
-                onPress={() => openPicker("startDate")}
-              >
-                <Text className="text-base">{formatDate(startDateTime)}</Text>
-              </Pressable>
-            )}
+            <input
+              type="date"
+              value={toDateInputValue(startDateTime)}
+              min={toDateInputValue(new Date())}
+              max={toDateInputValue(maxStartDateTime)}
+              onChange={(event) =>
+                handleWebDateInputChange("startDate", event.currentTarget.value)
+              }
+              className="web-datetime-input"
+            />
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Start Time")}
-            {Platform.OS === "web" ? (
-              <input
-                type="time"
-                value={toTimeInputValue(startDateTime)}
-                min={
-                  isSameDay(startDateTime, new Date())
-                    ? toTimeInputValue(new Date())
-                    : undefined
-                }
-                max={
-                  isSameDay(startDateTime, maxStartDateTime)
-                    ? toTimeInputValue(maxStartDateTime)
-                    : undefined
-                }
-                onChange={(event) =>
-                  handleWebTimeInputChange("startTime", event.currentTarget.value)
-                }
-                className="web-datetime-input"
-              />
-            ) : (
-              <Pressable
-                className="bg-white border border-gray-300 rounded-md px-4 py-3"
-                onPress={() => openPicker("startTime")}
-              >
-                <Text className="text-base">{formatTime(startDateTime)}</Text>
-              </Pressable>
-            )}
+            <input
+              type="time"
+              value={toTimeInputValue(startDateTime)}
+              min={
+                isSameDay(startDateTime, new Date())
+                  ? toTimeInputValue(new Date())
+                  : undefined
+              }
+              max={
+                isSameDay(startDateTime, maxStartDateTime)
+                  ? toTimeInputValue(maxStartDateTime)
+                  : undefined
+              }
+              onChange={(event) =>
+                handleWebTimeInputChange("startTime", event.currentTarget.value)
+              }
+              className="web-datetime-input"
+            />
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("End Date")}
-            {Platform.OS === "web" ? (
-              <input
-                type="date"
-                value={toDateInputValue(endDateTime)}
-                min={toDateInputValue(startDateTime)}
-                onChange={(event) =>
-                  handleWebDateInputChange("endDate", event.currentTarget.value)
-                }
-                className="web-datetime-input"
-              />
-            ) : (
-              <Pressable
-                className="bg-white border border-gray-300 rounded-md px-4 py-3"
-                onPress={() => openPicker("endDate")}
-              >
-                <Text className="text-base">{formatDate(endDateTime)}</Text>
-              </Pressable>
-            )}
+            <input
+              type="date"
+              value={toDateInputValue(endDateTime)}
+              min={toDateInputValue(startDateTime)}
+              onChange={(event) =>
+                handleWebDateInputChange("endDate", event.currentTarget.value)
+              }
+              className="web-datetime-input"
+            />
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("End Time")}
-            {Platform.OS === "web" ? (
-              <input
-                type="time"
-                value={toTimeInputValue(endDateTime)}
-                min={
-                  isSameDay(endDateTime, startDateTime)
-                    ? toTimeInputValue(startDateTime)
-                    : undefined
-                }
-                onChange={(event) =>
-                  handleWebTimeInputChange("endTime", event.currentTarget.value)
-                }
-                className="web-datetime-input"
-              />
-            ) : (
-              <Pressable
-                className="bg-white border border-gray-300 rounded-md px-4 py-3"
-                onPress={() => openPicker("endTime")}
-              >
-                <Text className="text-base">{formatTime(endDateTime)}</Text>
-              </Pressable>
-            )}
+            <input
+              type="time"
+              value={toTimeInputValue(endDateTime)}
+              min={
+                isSameDay(endDateTime, startDateTime)
+                  ? toTimeInputValue(startDateTime)
+                  : undefined
+              }
+              onChange={(event) =>
+                handleWebTimeInputChange("endTime", event.currentTarget.value)
+              }
+              className="web-datetime-input"
+            />
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
@@ -812,53 +675,7 @@ export default function CreateEventScreen() {
             </View>
           </View>
         </View>
-      </KeyboardAwareScrollView>
-
-      {Platform.OS !== "web" && (
-        <Modal
-          visible={activePicker !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={closePicker}
-        >
-          <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 16 }}>
-            <View className="bg-white rounded-2xl p-5">
-              {activePicker && (
-                <>
-                  <Text className="text-lg font-bold text-osu-dark mb-4">
-                    {getPickerTitle(activePicker)}
-                  </Text>
-                  <DateTimePicker
-                    value={pickerValue}
-                    mode={getPickerMode(activePicker)}
-                    display={pickerDisplay}
-                    minimumDate={getPickerMinimumDate(activePicker)}
-                    maximumDate={getPickerMaximumDate(activePicker)}
-                    onChange={handlePickerValueChange}
-                    {...(Platform.OS === "ios"
-                      ? { themeVariant: "light" as const, textColor: "#111827" }
-                      : {})}
-                  />
-                  <View className="mt-5 flex-row">
-                    <Pressable
-                      className="flex-1 border border-osu-scarlet rounded-xl py-3 mr-2 items-center"
-                      onPress={closePicker}
-                    >
-                      <Text className="text-osu-scarlet font-semibold">Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      className="flex-1 bg-osu-scarlet rounded-xl py-3 ml-2 items-center"
-                      onPress={applyPickerSelection}
-                    >
-                      <Text className="text-white font-semibold">Done</Text>
-                    </Pressable>
-                  </View>
-                </>
-              )}
-            </View>
-          </View>
-        </Modal>
-      )}
+      </ScrollView>
 
       <Modal
         visible={showConfirm}
