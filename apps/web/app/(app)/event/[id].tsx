@@ -315,35 +315,43 @@ export default function EventDetailScreen() {
 
           <View className="p-5">
             <View className="pb-4 border-b border-gray-200">
-              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">When</Text>
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">📅 When</Text>
               <Text className="text-osu-dark font-medium mt-1">{formatDateLabel(startDate)}</Text>
               <View className="flex-row items-center mt-2">
                 <Text className="text-gray-700 font-medium">{formatTimeLabel(startDate)}</Text>
                 <Text className="text-gray-400 mx-2">-</Text>
+                {startDate.toDateString() !== endDate.toDateString() && (
+                  <Text className="text-gray-700 font-medium mr-1">{formatDateLabel(endDate)} </Text>
+                )}
                 <Text className="text-gray-700 font-medium">{formatTimeLabel(endDate)}</Text>
               </View>
             </View>
 
             <View className="py-4 border-b border-gray-200">
-              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Where</Text>
-              <Text className="text-osu-dark font-medium mt-1">@ {event.location_text}</Text>
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">📍 Where</Text>
+              <Text className="text-osu-dark font-medium mt-1">{event.location_text}</Text>
             </View>
 
             <View className="py-4 border-b border-gray-200">
-              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Host</Text>
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">👥 Capacity</Text>
+              <Text className="text-osu-dark font-medium mt-1">{scarcityCopy}</Text>
+            </View>
+
+            <View className="py-4 border-b border-gray-200">
+              <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold">🎯 Host</Text>
               <TouchableOpacity onPress={() => router.push(`/profile/${event.host_id}`)}>
                 <Text className="text-osu-scarlet font-semibold mt-1">
                   {event.host?.display_name || event.host?.email.split("@")[0]}
                 </Text>
               </TouchableOpacity>
               {isFirstTimeHost && (
-                <Text className="text-gray-500 text-xs mt-1">First-time host</Text>
+                <Text className="text-gray-500 text-xs mt-1">First-time host 🆕</Text>
               )}
             </View>
 
             {event.description && (
               <View className="py-4 border-b border-gray-200">
-                <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Description</Text>
+                <Text className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">📝 Description</Text>
                 <Text className="text-osu-dark leading-6">{event.description}</Text>
               </View>
             )}
