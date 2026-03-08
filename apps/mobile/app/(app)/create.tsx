@@ -46,6 +46,12 @@ const isSameDay = (a: Date, b: Date): boolean =>
   a.getMonth() === b.getMonth() &&
   a.getDate() === b.getDate();
 
+const toMinutePrecision = (date: Date): Date => {
+  const next = new Date(date);
+  next.setSeconds(0, 0);
+  return next;
+};
+
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000;
 
@@ -73,6 +79,10 @@ export default function CreateEventScreen() {
   const [activePicker, setActivePicker] = useState<PickerTarget | null>(null);
   const [pickerValue, setPickerValue] = useState(oneHourLater);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRangeWarning, setShowRangeWarning] = useState(false);
+  const [rangeWarningMessage, setRangeWarningMessage] = useState("");
+  const nowMinute = toMinutePrecision(new Date());
+  const maxStartDateTime = new Date(nowMinute.getTime() + FORTY_EIGHT_HOURS_MS);
 
   useEffect(() => {
     if (endDateTime <= startDateTime) {
@@ -101,15 +111,38 @@ export default function CreateEventScreen() {
   const pickerDisplay = Platform.OS === "ios" ? "spinner" : "default";
 
   const getPickerMinimumDate = (target: PickerTarget): Date | undefined => {
-    if (target === "startDate") return new Date();
+    if (target === "startDate") return nowMinute;
     if (target === "startTime") {
-      return isSameDay(startDateTime, new Date()) ? new Date() : undefined;
+      return isSameDay(startDateTime, nowMinute) ? nowMinute : undefined;
     }
     if (target === "endDate") return startDateTime;
     if (target === "endTime") {
       return isSameDay(endDateTime, startDateTime) ? startDateTime : undefined;
     }
     return undefined;
+  };
+
+  const getPickerMaximumDate = (target: PickerTarget): Date | undefined => {
+    if (target === "startDate") return maxStartDateTime;
+    if (target === "startTime") {
+      return isSameDay(startDateTime, maxStartDateTime)
+        ? maxStartDateTime
+        : undefined;
+    }
+    return undefined;
+  };
+
+  const clampStartDateTime = (date: Date): Date => {
+    if (date < nowMinute) return new Date(nowMinute);
+    if (date > maxStartDateTime) return new Date(maxStartDateTime);
+    return date;
+  };
+
+  const notifyStartRangeViolation = () => {
+    setRangeWarningMessage(
+      `Start time must be between now and ${formatDate(maxStartDateTime)} ${formatTime(maxStartDateTime)}.`,
+    );
+    setShowRangeWarning(true);
   };
 
   const openPicker = (target: PickerTarget) => {
@@ -198,15 +231,6 @@ export default function CreateEventScreen() {
     </Text>
   );
 
-  const checkStartWithin48Hours = (date: Date) => {
-    if (date.getTime() - new Date().getTime() > FORTY_EIGHT_HOURS_MS) {
-      Alert.alert(
-        "Start Time Too Far",
-        "Please set the start time within 48 hours from now.",
-      );
-    }
-  };
-
   const handlePickerValueChange = (
     _event: DateTimePickerEvent,
     selected?: Date,
@@ -226,8 +250,11 @@ export default function CreateEventScreen() {
         pickerValue.getMonth(),
         pickerValue.getDate(),
       );
-      setStartDateTime(updated);
-      checkStartWithin48Hours(updated);
+      const clamped = clampStartDateTime(updated);
+      if (clamped.getTime() !== updated.getTime()) {
+        notifyStartRangeViolation();
+      }
+      setStartDateTime(clamped);
       closePicker();
       return;
     }
@@ -235,8 +262,11 @@ export default function CreateEventScreen() {
     if (activePicker === "startTime") {
       const updated = new Date(startDateTime);
       updated.setHours(pickerValue.getHours(), pickerValue.getMinutes(), 0, 0);
-      setStartDateTime(updated);
-      checkStartWithin48Hours(updated);
+      const clamped = clampStartDateTime(updated);
+      if (clamped.getTime() !== updated.getTime()) {
+        notifyStartRangeViolation();
+      }
+      setStartDateTime(clamped);
       closePicker();
       return;
     }
@@ -591,6 +621,7 @@ export default function CreateEventScreen() {
                   mode={getPickerMode(activePicker)}
                   display={pickerDisplay}
                   minimumDate={getPickerMinimumDate(activePicker)}
+                  maximumDate={getPickerMaximumDate(activePicker)}
                   onChange={handlePickerValueChange}
                   {...(Platform.OS === "ios"
                     ? { themeVariant: "light" as const, textColor: "#111827" }
@@ -693,6 +724,26 @@ export default function CreateEventScreen() {
                 />
               </View>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showRangeWarning}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRangeWarning(false)}
+      >
+        <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 16 }}>
+          <View className="bg-white rounded-2xl p-5">
+            <Text className="text-lg font-bold text-osu-dark mb-2">Invalid Start Time</Text>
+            <Text className="text-base text-gray-700">{rangeWarningMessage}</Text>
+            <Pressable
+              className="mt-5 bg-osu-scarlet rounded-xl py-3 items-center"
+              onPress={() => setShowRangeWarning(false)}
+            >
+              <Text className="text-white font-semibold">OK</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
