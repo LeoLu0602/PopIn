@@ -198,7 +198,10 @@ export default function FeedScreen() {
                         onVisible={() => {
                             if (!viewedIdsRef.current.has(event.id)) {
                                 viewedIdsRef.current.add(event.id);
-                                getPostHog().capture('event_viewed', buildEventProps(event));
+                                getPostHog().capture(
+                                    'event_viewed',
+                                    buildEventProps(event),
+                                );
                             }
                         }}
                     >

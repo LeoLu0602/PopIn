@@ -5,11 +5,16 @@ import { supabase } from "../lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 import { registerForPushNotifications } from "../lib/notifications";
 import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
+import { Modal, Platform, Pressable, Text, View } from "react-native";
+
+const SAFETY_REMINDER_TITLE = "Safety Reminder";
+const SAFETY_REMINDER_MESSAGE =
+  "PopIn connects OSU students. Everyone is verified with an @osu.edu email. Always meet in public campus spaces.";
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showSafetyReminder, setShowSafetyReminder] = useState(false);
   const segments = useSegments();
   const router = useRouter();
 
@@ -39,10 +44,14 @@ export default function RootLayout() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       if (session?.user?.id) {
         registerForPushNotifications(session.user.id);
+      }
+
+      if (event === "SIGNED_IN") {
+        setShowSafetyReminder(true);
       }
     });
 
@@ -61,5 +70,36 @@ export default function RootLayout() {
     }
   }, [session, segments, loading]);
 
-  return <Slot />;
+  return (
+    <>
+      <Slot />
+      <Modal
+        visible={showSafetyReminder}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSafetyReminder(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            justifyContent: "center",
+            paddingHorizontal: 20,
+          }}
+        >
+          <View className="bg-white rounded-2xl p-6">
+            <Text className="text-xl font-bold text-osu-dark mb-3">{SAFETY_REMINDER_TITLE}</Text>
+            <Text className="text-base text-gray-700 leading-6">{SAFETY_REMINDER_MESSAGE}</Text>
+
+            <Pressable
+              className="mt-6 bg-osu-scarlet rounded-xl py-3 items-center"
+              onPress={() => setShowSafetyReminder(false)}
+            >
+              <Text className="text-white font-semibold">Got it</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
 }
