@@ -197,12 +197,13 @@ export default function CreateEventScreen() {
   useEffect(() => {
     if (!isEditMode || !editId) return;
 
-    (supabase
-      .from("events")
-      .select("title, start_time, end_time, location_text, capacity, description, image_url")
-      .eq("id", editId)
-      .single() as any
-    ).then(({ data, error }: { data: any; error: any }) => {
+    (async () => {
+      const { data, error } = await (supabase
+        .from("events")
+        .select("title, start_time, end_time, location_text, capacity, description, image_url")
+        .eq("id", editId)
+        .single() as any);
+
       if (error || !data) {
         Alert.alert("Error", "Failed to load event");
         router.back();
@@ -223,7 +224,7 @@ export default function CreateEventScreen() {
       setCurrentAttendeeCount(count ?? 0);
 
       setEditLoading(false);
-    });
+    })();
   }, [editId]);
 
   const pickEventPhoto = async () => {
