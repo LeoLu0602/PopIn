@@ -258,7 +258,6 @@ export default function MyProfileScreen() {
               <Text className="text-2xl font-bold text-osu-dark">
                 {displayNameText}
               </Text>
-              <Text className="text-gray-500 text-sm">{profile.email}</Text>
             </View>
 
             {!editing && (profile.major || profile.year) && (
@@ -350,12 +349,6 @@ export default function MyProfileScreen() {
                   <Text className="text-gray-500 text-sm">Events Hosted</Text>
                   <Text className="text-xl font-bold text-osu-scarlet">
                     {profile.hosted_count}
-                  </Text>
-                </View>
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-gray-500 text-sm">Attendance Rate</Text>
-                  <Text className="text-xl font-bold text-osu-scarlet">
-                    {attendanceRate}%
                   </Text>
                 </View>
               </View>

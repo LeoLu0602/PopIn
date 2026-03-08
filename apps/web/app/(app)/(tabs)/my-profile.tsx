@@ -7,6 +7,7 @@ import {
     ActivityIndicator,
     Alert,
     TouchableOpacity,
+    ScrollView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -20,7 +21,6 @@ const YEAR_OPTIONS = [
 ];
 
 const formatYear = (y: number) => (y === 6 ? 'Graduate' : `Year ${y}`);
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
@@ -227,12 +227,10 @@ export default function MyProfileScreen() {
             : Math.round(rawAttendanceRate);
 
     return (
-        <KeyboardAwareScrollView
+        <ScrollView
             className="flex-1 bg-osu-light"
             contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
             keyboardShouldPersistTaps="handled"
-            enableOnAndroid
-            extraScrollHeight={80}
         >
             <View className="gap-4">
                 {/* Avatar + Name */}
@@ -267,12 +265,6 @@ export default function MyProfileScreen() {
                             style={{ textDecorationLine: 'none' }}
                         >
                             {displayNameText}
-                        </Text>
-                        <Text
-                            className="text-gray-500 text-sm"
-                            style={{ textDecorationLine: 'none' }}
-                        >
-                            {profile.email}
                         </Text>
                     </View>
 
@@ -402,14 +394,6 @@ export default function MyProfileScreen() {
                                     {profile.hosted_count}
                                 </Text>
                             </View>
-                            <View className="flex-row items-center justify-between">
-                                <Text className="text-gray-500 text-sm">
-                                    Attendance Rate
-                                </Text>
-                                <Text className="text-xl font-bold text-osu-scarlet">
-                                    {attendanceRate}%
-                                </Text>
-                            </View>
                         </View>
                     </Card>
                 )}
@@ -449,6 +433,6 @@ export default function MyProfileScreen() {
                     </TouchableOpacity>
                 )}
             </View>
-        </KeyboardAwareScrollView>
+        </ScrollView>
     );
 }

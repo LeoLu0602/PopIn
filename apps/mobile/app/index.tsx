@@ -37,11 +37,10 @@ export default function AuthScreen() {
       return;
     }
 
-    // Temporarily disabled OSU email validation for testing
-    // if (!validateEmail(email)) {
-    //   Alert.alert("Error", "Please use your @osu.edu email address");
-    //   return;
-    // }
+    if (!validateEmail(email)) {
+      Alert.alert("Error", "Please use your @osu.edu email address");
+      return;
+    }
 
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
