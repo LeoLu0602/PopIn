@@ -63,6 +63,7 @@ export default function CreateEventScreen() {
   const [location, setLocation] = useState("");
   const [capacity, setCapacity] = useState("");
   const [description, setDescription] = useState("");
+  const [descriptionHeight, setDescriptionHeight] = useState(100);
   const [loading, setLoading] = useState(false);
   const [editLoading, setEditLoading] = useState(isEditMode);
   const [userId, setUserId] = useState<string | null>(null);
@@ -529,8 +530,11 @@ export default function CreateEventScreen() {
               value={description}
               onChangeText={setDescription}
               multiline
-              numberOfLines={4}
               textAlignVertical="top"
+              style={{ minHeight: 100, height: descriptionHeight }}
+              onContentSizeChange={(e) =>
+                setDescriptionHeight(Math.max(100, e.nativeEvent.contentSize.height + 16))
+              }
             />
           </View>
 

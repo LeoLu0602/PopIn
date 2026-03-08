@@ -61,11 +61,15 @@ export function EventCard({ event }: EventCardProps) {
         </View>
 
         <Text className="text-sm text-gray-500 mb-3" numberOfLines={1}>
-          {formatDate(startDate)} • {formatTime(startDate)} - {formatTime(endDate)}
+          {formatDate(startDate)} • {formatTime(startDate)} -{" "}
+          {startDate.toDateString() !== endDate.toDateString()
+            ? `${formatDate(endDate)} `
+            : ""}
+          {formatTime(endDate)}
         </Text>
 
         <Text className="text-base text-gray-700 mb-3" numberOfLines={1}>
-          @ {event.location_text}
+          📍 {event.location_text}
         </Text>
 
         <View className="flex-row items-center justify-between pt-2 border-t border-gray-200">
