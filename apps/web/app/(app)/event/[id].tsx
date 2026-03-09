@@ -3,6 +3,13 @@ import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Ima
 import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import { requestFeedRefresh } from "../../../lib/feedRefresh";
+import {
+  getEventNotifications,
+  markEventNotificationsRead,
+  createNotificationsForAttendees,
+  type EventNotification,
+} from "../../../lib/notifications";
+import { triggerBadgeRefresh } from "../../../lib/notifBadge";
 import type { EventWithDetails, EventParticipant } from "shared";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 import { getPostHog, buildEventProps } from "../../../lib/posthog";
@@ -23,6 +30,7 @@ export default function EventDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [eventNotifications, setEventNotifications] = useState<EventNotification[]>([]);
   // Refs to prevent duplicate analytics fires
   const detailOpenedFired = useRef(false);
   // const attendedFired = useRef(false);
@@ -96,6 +104,13 @@ export default function EventDetailScreen() {
     useCallback(() => {
       if (id && userId) {
         fetchEvent();
+        // Fetch and immediately mark notifications as read for attendees
+        getEventNotifications(id).then((notifs) => {
+          setEventNotifications(notifs);
+          if (notifs.length > 0) {
+            markEventNotificationsRead(id).then(() => triggerBadgeRefresh());
+          }
+        });
       }
     }, [id, userId])
   );
@@ -174,6 +189,12 @@ export default function EventDetailScreen() {
       if (error) throw error;
 
       notifyPush("cancel", event.id, userId);
+      createNotificationsForAttendees(
+        event.id,
+        userId,
+        "event_cancelled",
+        ["Event cancelled"]
+      ).catch((err) => console.warn("[notif] cancel notify failed:", err));
       requestFeedRefresh();
       if (Platform.OS === "web") {
         globalThis.alert?.("Your event has been canceled.");
@@ -301,10 +322,48 @@ export default function EventDetailScreen() {
   };
   const joinSummary = buildJoinSummary();
 
+  const latestNotif = eventNotifications[0] ?? null;
+  const isAttendee = !isHost && event.is_joined;
+
+  const timeAgo = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
   return (
     <ScrollView className="flex-1 bg-white">
       <View className="p-4" style={{ width: "100%", maxWidth: 920, alignSelf: "center" }}>
         <View className="p-0 overflow-hidden">
+          {/* Notification banner — shown to attendees only */}
+          {isAttendee && latestNotif?.type === "event_cancelled" && (
+            <View
+              className="mx-5 mt-5 rounded-xl px-4 py-3 mb-2 flex-row items-center gap-3"
+              style={{ backgroundColor: "#BB0000" }}
+            >
+              <Text className="text-base">✕</Text>
+              <Text className="text-sm font-semibold text-white">
+                This event has been cancelled by the host
+              </Text>
+            </View>
+          )}
+          {isAttendee && latestNotif?.type === "event_updated" && (
+            <View className="mx-5 mt-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-2 flex-row items-start gap-3">
+              <Text className="text-base mt-0.5">🔔</Text>
+              <View>
+                <Text className="text-sm font-semibold text-osu-scarlet">
+                  Updated by host
+                </Text>
+                <Text className="text-xs text-gray-600 mt-0.5">
+                  {latestNotif.changed_fields.join(" · ")} · {timeAgo(latestNotif.created_at)}
+                </Text>
+              </View>
+            </View>
+          )}
+
           <View className="p-5 pb-4">
             <Text className="text-3xl font-bold text-osu-dark mb-2">
               {event.title}

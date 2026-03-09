@@ -1,6 +1,9 @@
 import { Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { getUnreadNotificationCount } from '../../../lib/notifications';
+import { registerBadgeRefresh } from '../../../lib/notifBadge';
 
 const renderTabIcon = (
     name: React.ComponentProps<typeof MaterialIcons>['name'],
@@ -24,6 +27,17 @@ const renderTabIcon = (
 );
 
 export default function TabsLayout() {
+    const [notifCount, setNotifCount] = useState(0);
+
+    const refreshBadge = () => {
+        getUnreadNotificationCount().then(setNotifCount);
+    };
+
+    useEffect(() => {
+        refreshBadge();
+        registerBadgeRefresh(refreshBadge);
+    }, []);
+
     return (
         <Tabs
             screenOptions={{
@@ -89,6 +103,8 @@ export default function TabsLayout() {
                     title: 'My Events',
                     tabBarIcon: ({ color, focused }) =>
                         renderTabIcon(focused ? 'event' : 'event-note', color),
+                    tabBarBadge: notifCount > 0 ? (notifCount > 9 ? '9+' : notifCount) : undefined,
+                    tabBarBadgeStyle: { backgroundColor: '#BB0000', fontSize: 10 },
                 }}
             />
             <Tabs.Screen

@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, ScrollView, RefreshControl, Alert, TouchableOpacity } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import type { EventWithDetails } from "shared";
 import { EventCard } from "../../../components/EventCard";
+import { triggerBadgeRefresh } from "../../../lib/notifBadge";
 
 type TopTab = "hosting" | "joined";
 type TimeFilter = "now" | "upcoming" | "past";
@@ -64,6 +66,8 @@ export default function MyEventsScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [topTab, setTopTab] = useState<TopTab>("joined");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("upcoming");
+  // Map of eventId -> notification type for unread notifications
+  const [unreadMap, setUnreadMap] = useState<Map<string, "event_updated" | "event_cancelled">>(new Map());
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -71,12 +75,21 @@ export default function MyEventsScreen() {
     });
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        // Refresh badge when leaving My Events (notifications may have been read)
+        triggerBadgeRefresh();
+      };
+    }, [])
+  );
+
   const fetchMyEvents = async () => {
     if (!userId) return;
 
     setLoading(true);
 
-    const [hostingResult, memberResult] = await Promise.all([
+    const [hostingResult, memberResult, notifResult] = await Promise.all([
       supabase
         .from("events")
         .select(
@@ -89,6 +102,11 @@ export default function MyEventsScreen() {
           `event_id, events(*, host:profiles!events_host_id_fkey(id, email, display_name), event_members(user_id))`,
         )
         .eq("user_id", userId),
+      supabase
+        .from("event_notifications")
+        .select("event_id, type")
+        .eq("user_id", userId)
+        .eq("read", false),
     ]);
 
     if (hostingResult.error) {
@@ -119,6 +137,17 @@ export default function MyEventsScreen() {
             is_joined: true,
           })),
       );
+    }
+
+    if (!notifResult.error && notifResult.data) {
+      const map = new Map<string, "event_updated" | "event_cancelled">();
+      for (const n of notifResult.data as any[]) {
+        // Cancelled takes priority over updated
+        if (!map.has(n.event_id) || n.type === "event_cancelled") {
+          map.set(n.event_id, n.type);
+        }
+      }
+      setUnreadMap(map);
     }
 
     setLoading(false);
@@ -191,11 +220,46 @@ export default function MyEventsScreen() {
             <Text className="text-gray-400 text-sm mt-1">{empty.sub}</Text>
           </View>
         ) : (
-          visibleEvents.map((event) => (
-            <View key={event.id} className="mx-4 mb-4">
-              <EventCard event={event} />
-            </View>
-          ))
+          visibleEvents.map((event) => {
+            const notifType = topTab === "joined" ? unreadMap.get(event.id) : undefined;
+            const isCancelled = notifType === "event_cancelled";
+            const isUpdated = notifType === "event_updated";
+            return (
+              <View
+                key={event.id}
+                className="mx-4 mb-4"
+                style={isCancelled ? { opacity: 0.6 } : undefined}
+              >
+                {isUpdated && (
+                  <View className="flex-row justify-end mb-1">
+                    <View className="bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                      <Text style={{ color: "#BB0000", fontSize: 10, fontWeight: "600" }}>
+                        Updated →
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {isCancelled && (
+                  <View className="flex-row justify-end mb-1">
+                    <View className="bg-red-600 px-2 py-0.5 rounded-full">
+                      <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "600" }}>
+                        ✕ Cancelled
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                <View
+                  style={
+                    isUpdated
+                      ? { borderLeftWidth: 4, borderLeftColor: "#BB0000", borderRadius: 8 }
+                      : undefined
+                  }
+                >
+                  <EventCard event={event} />
+                </View>
+              </View>
+            );
+          })
         )}
       </ScrollView>
     </View>

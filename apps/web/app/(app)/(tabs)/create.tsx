@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import { uploadEventPhoto } from "../../../lib/storage";
 import { requestFeedRefresh } from "../../../lib/feedRefresh";
+import { createNotificationsForAttendees } from "../../../lib/notifications";
 import { getPostHog } from "../../../lib/posthog";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 
@@ -113,6 +114,13 @@ export default function CreateEventScreen() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [eventPhoto, setEventPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
 
+  const originalEventRef = useRef<{
+    start_time: string;
+    end_time: string;
+    location_text: string;
+    description: string | null;
+  } | null>(null);
+
   const [showConfirm, setShowConfirm] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const nowMinute = toMinutePrecision(new Date());
@@ -153,6 +161,12 @@ export default function CreateEventScreen() {
       setCapacity(data.capacity ? String(data.capacity) : "");
       setDescription(data.description || "");
       setExistingImageUrl(data.image_url || null);
+      originalEventRef.current = {
+        start_time: data.start_time,
+        end_time: data.end_time,
+        location_text: data.location_text,
+        description: data.description ?? null,
+      };
       setEditLoading(false);
     });
   }, [editId]);
@@ -375,6 +389,32 @@ export default function CreateEventScreen() {
               else console.log("[push] update notification sent");
             })
             .catch((err) => console.warn("[push] update notify failed:", err));
+
+          // Detect which meaningful fields changed and notify attendees
+          const orig = originalEventRef.current;
+          if (orig) {
+            const changedFields: string[] = [];
+            if (
+              startDateTime.toISOString() !== orig.start_time ||
+              endDateTime.toISOString() !== orig.end_time
+            ) {
+              changedFields.push("Time changed");
+            }
+            if (location.trim() !== orig.location_text) {
+              changedFields.push("Location changed");
+            }
+            if ((description.trim() || null) !== orig.description) {
+              changedFields.push("Description updated");
+            }
+            if (changedFields.length > 0) {
+              createNotificationsForAttendees(
+                editId,
+                userId,
+                "event_updated",
+                changedFields
+              ).catch((err) => console.warn("[notif] update notify failed:", err));
+            }
+          }
         }
         setShowConfirm(false);
         if (Platform.OS === "web") {
