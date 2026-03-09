@@ -113,6 +113,7 @@ export default function CreateEventScreen() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [eventPhoto, setEventPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
 
+  const [currentAttendeeCount, setCurrentAttendeeCount] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showRangeWarning, setShowRangeWarning] = useState(false);
   const [rangeWarningMessage, setRangeWarningMessage] = useState("");
@@ -155,6 +156,15 @@ export default function CreateEventScreen() {
       setCapacity(data.capacity ? String(data.capacity) : "");
       setDescription(data.description || "");
       setExistingImageUrl(data.image_url || null);
+
+      (supabase
+        .from("event_members")
+        .select("*", { count: "exact", head: true })
+        .eq("event_id", editId) as any
+      ).then(({ count }: { count: number | null }) => {
+        setCurrentAttendeeCount(count ?? 0);
+      });
+
       setEditLoading(false);
     });
   }, [editId]);
@@ -303,6 +313,14 @@ export default function CreateEventScreen() {
     const capacityNum = trimmedCapacity ? parseInt(trimmedCapacity, 10) : null;
     if (trimmedCapacity && (capacityNum == null || isNaN(capacityNum) || capacityNum < 2)) {
       Alert.alert("Error", "Capacity must be at least 2 (you as the host + at least 1 attendee), or leave blank for unlimited");
+      return;
+    }
+
+    if (isEditMode && capacityNum != null && capacityNum < currentAttendeeCount) {
+      Alert.alert(
+        "Capacity Too Low",
+        `This event already has ${currentAttendeeCount} attendee${currentAttendeeCount !== 1 ? "s" : ""}. New capacity must be at least ${currentAttendeeCount}.`,
+      );
       return;
     }
 
@@ -621,6 +639,26 @@ export default function CreateEventScreen() {
               onChangeText={setCapacity}
               keyboardType="number-pad"
             />
+            {(() => {
+              const num = parseInt(capacity.trim(), 10);
+              if (capacity.trim() && !isNaN(num)) {
+                if (num < 2) {
+                  return (
+                    <Text className="text-red-500 text-sm mt-1">
+                      Capacity must be at least 2 (you + 1 attendee). Leave blank for unlimited.
+                    </Text>
+                  );
+                }
+                if (isEditMode && num < currentAttendeeCount) {
+                  return (
+                    <Text className="text-red-500 text-sm mt-1">
+                      This event already has {currentAttendeeCount} attendee{currentAttendeeCount !== 1 ? "s" : ""}. Capacity cannot be lower than the current attendee count.
+                    </Text>
+                  );
+                }
+              }
+              return null;
+            })()}
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
