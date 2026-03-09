@@ -121,7 +121,10 @@ export default function CreateEventScreen() {
     description: string | null;
   } | null>(null);
 
+  const [currentAttendeeCount, setCurrentAttendeeCount] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRangeWarning, setShowRangeWarning] = useState(false);
+  const [rangeWarningMessage, setRangeWarningMessage] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const nowMinute = toMinutePrecision(new Date());
   const maxStartDateTime = new Date(nowMinute.getTime() + FORTY_EIGHT_HOURS_MS);
@@ -167,6 +170,15 @@ export default function CreateEventScreen() {
         location_text: data.location_text,
         description: data.description ?? null,
       };
+
+      (supabase
+        .from("event_members")
+        .select("*", { count: "exact", head: true })
+        .eq("event_id", editId) as any
+      ).then(({ count }: { count: number | null }) => {
+        setCurrentAttendeeCount(count ?? 0);
+      });
+
       setEditLoading(false);
     });
   }, [editId]);
@@ -221,9 +233,23 @@ export default function CreateEventScreen() {
     if (dt < now) return new Date(now);
     if (dt > max) return new Date(max);
     return dt;
+  const notifyStartRangeViolation = (maxAllowed: Date) => {
+    setRangeWarningMessage(
+      `Start time must be between now and ${formatDate(maxAllowed)} ${formatTime(maxAllowed)}.`,
+    );
+    setShowRangeWarning(true);
   };
 
   const applyPickerValue = (target: PickerTarget, selectedValue: Date) => {
+    const boundedNow = toMinutePrecision(new Date());
+    const boundedMaxStart = new Date(boundedNow.getTime() + FORTY_EIGHT_HOURS_MS);
+
+    const clampStartDateTime = (date: Date): Date => {
+      if (date < boundedNow) return new Date(boundedNow);
+      if (date > boundedMaxStart) return new Date(boundedMaxStart);
+      return date;
+    };
+
     if (target === "startDate") {
       const updated = new Date(startDateTime);
       updated.setFullYear(
@@ -237,6 +263,10 @@ export default function CreateEventScreen() {
       if (endDateTime <= clamped) {
         setEndDateTime(new Date(clamped.getTime() + DEFAULT_EVENT_DURATION_MS));
       }
+      if (clamped.getTime() !== updated.getTime()) {
+        notifyStartRangeViolation(boundedMaxStart);
+      }
+      setStartDateTime(clamped);
       return;
     }
 
@@ -249,6 +279,10 @@ export default function CreateEventScreen() {
       if (endDateTime <= clamped) {
         setEndDateTime(new Date(clamped.getTime() + DEFAULT_EVENT_DURATION_MS));
       }
+      if (clamped.getTime() !== updated.getTime()) {
+        notifyStartRangeViolation(boundedMaxStart);
+      }
+      setStartDateTime(clamped);
       return;
     }
 
@@ -309,6 +343,14 @@ export default function CreateEventScreen() {
     const capacityNum = trimmedCapacity ? parseInt(trimmedCapacity, 10) : null;
     if (trimmedCapacity && (capacityNum == null || isNaN(capacityNum) || capacityNum < 2)) {
       Alert.alert("Error", "Capacity must be at least 2 (you as the host + at least 1 attendee), or leave blank for unlimited");
+      return;
+    }
+
+    if (isEditMode && capacityNum != null && capacityNum < currentAttendeeCount) {
+      Alert.alert(
+        "Capacity Too Low",
+        `This event already has ${currentAttendeeCount} attendee${currentAttendeeCount !== 1 ? "s" : ""}. New capacity must be at least ${currentAttendeeCount}.`,
+      );
       return;
     }
 
@@ -662,6 +704,26 @@ export default function CreateEventScreen() {
               onChangeText={setCapacity}
               keyboardType="number-pad"
             />
+            {(() => {
+              const num = parseInt(capacity.trim(), 10);
+              if (capacity.trim() && !isNaN(num)) {
+                if (num < 2) {
+                  return (
+                    <Text className="text-red-500 text-sm mt-1">
+                      Capacity must be at least 2 (you + 1 attendee). Leave blank for unlimited.
+                    </Text>
+                  );
+                }
+                if (isEditMode && num < currentAttendeeCount) {
+                  return (
+                    <Text className="text-red-500 text-sm mt-1">
+                      This event already has {currentAttendeeCount} attendee{currentAttendeeCount !== 1 ? "s" : ""}. Capacity cannot be lower than the current attendee count.
+                    </Text>
+                  );
+                }
+              }
+              return null;
+            })()}
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
@@ -826,6 +888,26 @@ export default function CreateEventScreen() {
                 />
               </View>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showRangeWarning}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRangeWarning(false)}
+      >
+        <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 16 }}>
+          <View className="bg-white rounded-2xl p-5" style={{ maxWidth: 440, width: "100%", alignSelf: "center" }}>
+            <Text className="text-lg font-bold text-osu-dark mb-2">Invalid Start Time</Text>
+            <Text className="text-base text-gray-700">{rangeWarningMessage}</Text>
+            <Pressable
+              className="mt-5 bg-osu-scarlet rounded-xl py-3 items-center"
+              onPress={() => setShowRangeWarning(false)}
+            >
+              <Text className="text-white font-semibold">OK</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
