@@ -45,7 +45,7 @@ function applyTimeFilter(events: EventWithDetails[], filter: TimeFilter): EventW
 
   if (filter === "now") {
     return events
-      .filter((e) => new Date(e.start_time) <= now && getEndTime(e) >= now)
+      .filter((e) => (e as any).status !== "canceled" && new Date(e.start_time) <= now && getEndTime(e) >= now)
       .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
   }
   if (filter === "upcoming") {
@@ -53,9 +53,13 @@ function applyTimeFilter(events: EventWithDetails[], filter: TimeFilter): EventW
       .filter((e) => new Date(e.start_time) > now)
       .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
   }
-  // past
+  // past: active events where end_time < now, OR cancelled events where start_time < now
   return events
-    .filter((e) => getEndTime(e) < now)
+    .filter((e) =>
+      (e as any).status === "canceled"
+        ? new Date(e.start_time) < now
+        : getEndTime(e) < now
+    )
     .sort((a, b) => getEndTime(b).getTime() - getEndTime(a).getTime());
 }
 
@@ -221,15 +225,38 @@ export default function MyEventsScreen() {
           </View>
         ) : (
           visibleEvents.map((event) => {
-            const notifType = topTab === "joined" ? unreadMap.get(event.id) : undefined;
-            const isCancelled = notifType === "event_cancelled";
-            const isUpdated = notifType === "event_updated";
+            const notifType = unreadMap.get(event.id);
+            const isCanceled = (event as any).status === "canceled";
+            // isUpdated is notification-based (disappears after read)
+            const isUpdated = !isCanceled && notifType === "event_updated";
+            const isHostTab = topTab === "hosting";
+
             return (
               <View
                 key={event.id}
                 className="mx-4 mb-4"
-                style={isCancelled ? { opacity: 0.6 } : undefined}
+                style={isCanceled ? { opacity: 0.6 } : undefined}
               >
+                {/* Status pill — permanent based on event.status */}
+                {isCanceled && (
+                  <View className="flex-row justify-end mb-1">
+                    {isHostTab ? (
+                      <View className="bg-gray-100 border border-gray-300 px-2 py-0.5 rounded-full">
+                        <Text style={{ color: "#6B7280", fontSize: 10, fontWeight: "600" }}>
+                          Cancelled
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="bg-red-600 px-2 py-0.5 rounded-full">
+                        <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "600" }}>
+                          ✕ Cancelled
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Updated pill — notification-based (disappears after read) */}
                 {isUpdated && (
                   <View className="flex-row justify-end mb-1">
                     <View className="bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
@@ -239,20 +266,18 @@ export default function MyEventsScreen() {
                     </View>
                   </View>
                 )}
-                {isCancelled && (
-                  <View className="flex-row justify-end mb-1">
-                    <View className="bg-red-600 px-2 py-0.5 rounded-full">
-                      <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "600" }}>
-                        ✕ Cancelled
-                      </Text>
-                    </View>
-                  </View>
-                )}
+
                 <View
                   style={
-                    isUpdated
-                      ? { borderLeftWidth: 4, borderLeftColor: "#BB0000", borderRadius: 8 }
-                      : undefined
+                    isCanceled
+                      ? {
+                          borderLeftWidth: 4,
+                          borderLeftColor: isHostTab ? "#D1D5DB" : "#DC2626",
+                          borderRadius: 8,
+                        }
+                      : isUpdated
+                        ? { borderLeftWidth: 4, borderLeftColor: "#BB0000", borderRadius: 8 }
+                        : undefined
                   }
                 >
                   <EventCard event={event} />
