@@ -115,6 +115,8 @@ export default function CreateEventScreen() {
 
   const [currentAttendeeCount, setCurrentAttendeeCount] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRangeWarning, setShowRangeWarning] = useState(false);
+  const [rangeWarningMessage, setRangeWarningMessage] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const nowMinute = toMinutePrecision(new Date());
   const maxStartDateTime = new Date(nowMinute.getTime() + FORTY_EIGHT_HOURS_MS);
@@ -211,7 +213,23 @@ export default function CreateEventScreen() {
     </Text>
   );
 
+  const notifyStartRangeViolation = (maxAllowed: Date) => {
+    setRangeWarningMessage(
+      `Start time must be between now and ${formatDate(maxAllowed)} ${formatTime(maxAllowed)}.`,
+    );
+    setShowRangeWarning(true);
+  };
+
   const applyPickerValue = (target: PickerTarget, selectedValue: Date) => {
+    const boundedNow = toMinutePrecision(new Date());
+    const boundedMaxStart = new Date(boundedNow.getTime() + FORTY_EIGHT_HOURS_MS);
+
+    const clampStartDateTime = (date: Date): Date => {
+      if (date < boundedNow) return new Date(boundedNow);
+      if (date > boundedMaxStart) return new Date(boundedMaxStart);
+      return date;
+    };
+
     if (target === "startDate") {
       const updated = new Date(startDateTime);
       updated.setFullYear(
@@ -219,14 +237,22 @@ export default function CreateEventScreen() {
         selectedValue.getMonth(),
         selectedValue.getDate(),
       );
-      setStartDateTime(updated);
+      const clamped = clampStartDateTime(updated);
+      if (clamped.getTime() !== updated.getTime()) {
+        notifyStartRangeViolation(boundedMaxStart);
+      }
+      setStartDateTime(clamped);
       return;
     }
 
     if (target === "startTime") {
       const updated = new Date(startDateTime);
       updated.setHours(selectedValue.getHours(), selectedValue.getMinutes(), 0, 0);
-      setStartDateTime(updated);
+      const clamped = clampStartDateTime(updated);
+      if (clamped.getTime() !== updated.getTime()) {
+        notifyStartRangeViolation(boundedMaxStart);
+      }
+      setStartDateTime(clamped);
       return;
     }
 
@@ -797,6 +823,26 @@ export default function CreateEventScreen() {
                 />
               </View>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showRangeWarning}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRangeWarning(false)}
+      >
+        <View style={{ flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 16 }}>
+          <View className="bg-white rounded-2xl p-5" style={{ maxWidth: 440, width: "100%", alignSelf: "center" }}>
+            <Text className="text-lg font-bold text-osu-dark mb-2">Invalid Start Time</Text>
+            <Text className="text-base text-gray-700">{rangeWarningMessage}</Text>
+            <Pressable
+              className="mt-5 bg-osu-scarlet rounded-xl py-3 items-center"
+              onPress={() => setShowRangeWarning(false)}
+            >
+              <Text className="text-white font-semibold">OK</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>

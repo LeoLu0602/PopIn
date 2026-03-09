@@ -24,6 +24,7 @@ export default function RootLayout() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+
       if (session?.user?.id) {
         registerForPushNotifications(session.user.id);
       }
