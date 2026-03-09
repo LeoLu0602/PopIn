@@ -233,6 +233,8 @@ export default function CreateEventScreen() {
     if (dt < now) return new Date(now);
     if (dt > max) return new Date(max);
     return dt;
+  };
+
   const notifyStartRangeViolation = (maxAllowed: Date) => {
     setRangeWarningMessage(
       `Start time must be between now and ${formatDate(maxAllowed)} ${formatTime(maxAllowed)}.`,

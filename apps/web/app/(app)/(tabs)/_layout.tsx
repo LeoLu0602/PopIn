@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { getUnreadNotificationCount } from '../../../lib/notifications';
 import { registerBadgeRefresh } from '../../../lib/notifBadge';
 import { Pressable, Text, View } from 'react-native';
-import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 
 const SAFETY_DISMISSED_KEY_PREFIX = 'safety-reminder-dismissed:';
@@ -55,6 +54,7 @@ const renderTabIcon = (
 
 export default function TabsLayout() {
     const [notifCount, setNotifCount] = useState(0);
+    const [showBanner, setShowBanner] = useState(false);
 
     const refreshBadge = () => {
         getUnreadNotificationCount().then(setNotifCount);
@@ -64,6 +64,49 @@ export default function TabsLayout() {
         refreshBadge();
         registerBadgeRefresh(refreshBadge);
     }, []);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const syncBannerWithCurrentUser = async () => {
+            const { data } = await supabase.auth.getUser();
+            const userId = data.user?.id;
+            if (!isMounted) return;
+            if (!userId) {
+                setShowBanner(false);
+                return;
+            }
+            setShowBanner(!hasDismissedSafetyReminder(userId));
+        };
+
+        void syncBannerWithCurrentUser();
+
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, session) => {
+            const userId = session?.user?.id;
+            if (!userId) {
+                clearSafetyReminderDismissedFlags();
+                setShowBanner(false);
+                return;
+            }
+            setShowBanner(!hasDismissedSafetyReminder(userId));
+        });
+
+        return () => {
+            isMounted = false;
+            subscription.unsubscribe();
+        };
+    }, []);
+
+    const dismissBanner = async () => {
+        const { data } = await supabase.auth.getUser();
+        const userId = data.user?.id;
+        if (userId) {
+            markSafetyReminderDismissed(userId);
+        }
+        setShowBanner(false);
+    };
 
     return (
         <View style={{ flex: 1 }}>
