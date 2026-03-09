@@ -4,6 +4,7 @@ import "../global.css";
 import { supabase } from "../lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 import { registerForPushNotifications } from "../lib/notifications";
+import { Analytics } from "@vercel/analytics/react";
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -45,5 +46,10 @@ export default function RootLayout() {
     }
   }, [session, segments, loading]);
 
-  return <Slot />;
+  return (
+    <>
+      <Slot />
+      <Analytics />
+    </>
+  );
 }
