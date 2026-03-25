@@ -1,10 +1,11 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { getUnreadNotificationCount } from '../../../lib/notifications';
 import { registerBadgeRefresh } from '../../../lib/notifBadge';
 import { Pressable, Text, View } from 'react-native';
 import { supabase } from '../../../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 
 const SAFETY_DISMISSED_KEY_PREFIX = 'safety-reminder-dismissed:';
 
@@ -55,6 +56,20 @@ const renderTabIcon = (
 export default function TabsLayout() {
     const [notifCount, setNotifCount] = useState(0);
     const [showBanner, setShowBanner] = useState(false);
+    const [session, setSession] = useState<Session | null>(null);
+
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data }) => setSession(data.session));
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setSession(s));
+        return () => subscription.unsubscribe();
+    }, []);
+
+    const requireAuth = (e: { preventDefault: () => void }) => {
+        if (!session) {
+            e.preventDefault();
+            router.push('/');
+        }
+    };
 
     const refreshBadge = () => {
         getUnreadNotificationCount().then(setNotifCount);
@@ -202,9 +217,10 @@ export default function TabsLayout() {
                 name="create"
                 options={{
                     title: 'Create Event',
-                    tabBarIcon: ({ color, focused }) =>
+                    tabBarIcon: ({ color }) =>
                         renderTabIcon('add-box', color, 'Create'),
                 }}
+                listeners={{ tabPress: requireAuth }}
             />
             <Tabs.Screen
                 name="my-events"
@@ -215,6 +231,7 @@ export default function TabsLayout() {
                     tabBarBadge: notifCount > 0 ? (notifCount > 9 ? '9+' : notifCount) : undefined,
                     tabBarBadgeStyle: { backgroundColor: '#BB0000', fontSize: 10 },
                 }}
+                listeners={{ tabPress: requireAuth }}
             />
             <Tabs.Screen
                 name="feedback"
@@ -231,6 +248,7 @@ export default function TabsLayout() {
                     tabBarIcon: ({ color }) =>
                         renderTabIcon('account-circle', color, 'Profile'),
                 }}
+                listeners={{ tabPress: requireAuth }}
             />
             </Tabs>
         </View>

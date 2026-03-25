@@ -6,9 +6,10 @@ import { Card } from "./Card";
 
 interface EventCardProps {
   event: EventWithDetails;
+  onPress?: () => void;
 }
 
-export function EventCard({ event }: EventCardProps) {
+export function EventCard({ event, onPress }: EventCardProps) {
   const startDate = new Date(event.start_time);
   const endDate = new Date(event.end_time);
 
@@ -36,7 +37,7 @@ export function EventCard({ event }: EventCardProps) {
 
   return (
     <TouchableOpacity
-      onPress={() => router.push(`/event/${event.id}`)}
+      onPress={onPress ?? (() => router.push(`/event/${event.id}`))}
       activeOpacity={0.7}
     >
       <Card

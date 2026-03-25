@@ -95,7 +95,7 @@ export default function EventDetailScreen() {
   };
 
   useEffect(() => {
-    if (id && userId) {
+    if (id) {
       fetchEvent();
     }
   }, [id, userId]);
@@ -103,21 +103,27 @@ export default function EventDetailScreen() {
   // Re-fetch whenever this screen comes back into focus (e.g. returning from edit)
   useFocusEffect(
     useCallback(() => {
-      if (id && userId) {
+      if (id) {
         fetchEvent();
-        // Fetch and immediately mark notifications as read for attendees
-        getEventNotifications(id).then((notifs) => {
-          setEventNotifications(notifs);
-          if (notifs.length > 0) {
-            markEventNotificationsRead(id).then(() => triggerBadgeRefresh());
-          }
-        });
+        // Notifications only apply to authenticated attendees
+        if (userId) {
+          getEventNotifications(id).then((notifs) => {
+            setEventNotifications(notifs);
+            if (notifs.length > 0) {
+              markEventNotificationsRead(id).then(() => triggerBadgeRefresh());
+            }
+          });
+        }
       }
     }, [id, userId])
   );
 
   const handleJoin = async () => {
-    if (!event || !userId) return;
+    if (!event) return;
+    if (!userId) {
+      router.push("/");
+      return;
+    }
     // Prevent duplicate fires if user taps rapidly
     if (joinClickedInFlight.current) return;
 
@@ -248,16 +254,6 @@ export default function EventDetailScreen() {
   const startDate = new Date(event.start_time);
   const endDate = new Date(event.end_time);
 
-  const formatDateTime = (date: Date) => {
-    return date.toLocaleString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
 
   const formatDateLabel = (date: Date) => {
     return date.toLocaleDateString("en-US", {

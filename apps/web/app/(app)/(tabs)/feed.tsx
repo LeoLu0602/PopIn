@@ -47,6 +47,7 @@ export default function FeedScreen() {
         });
     }, []);
 
+
     useEffect(() => {
         if (!feedOpenedFired) {
             feedOpenedFired = true;
