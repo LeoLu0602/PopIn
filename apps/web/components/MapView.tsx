@@ -16,6 +16,7 @@ export default function MapView({ events }: Props) {
     const mapRef = useRef<any>(null);
     const googleRef = useRef<any>(null);
     const markersRef = useRef<any[]>([]);
+    const clustererRef = useRef<any>(null);
     const infoWindowRef = useRef<any>(null);
     const [mapReady, setMapReady] = useState(false);
     const [mapError, setMapError] = useState(false);
@@ -121,14 +122,17 @@ export default function MapView({ events }: Props) {
         const google = googleRef.current;
         const iw = infoWindowRef.current;
 
-        // Clear old markers
-        markersRef.current.forEach((m) => m.setMap(null));
+        // Clear previous clusterer (removes all managed markers from the map)
+        clustererRef.current?.clearMarkers();
+        clustererRef.current = null;
         markersRef.current = [];
 
         let cancelled = false;
 
         (async () => {
             const markerLib: any = await google.maps.importLibrary('marker');
+            const { MarkerClusterer } = await import('@googlemaps/markerclusterer');
+            const newMarkers: any[] = [];
 
             for (const event of events) {
                 if (cancelled) break;
@@ -148,9 +152,9 @@ export default function MapView({ events }: Props) {
                     glyphColor: '#fff',
                 });
 
+                // No `map` here — MarkerClusterer manages map assignment
                 const marker = new markerLib.AdvancedMarkerElement({
                     position,
-                    map,
                     content: pin.element,
                     title: event.title,
                 });
@@ -177,7 +181,14 @@ export default function MapView({ events }: Props) {
                     openPanel(event);
                 });
 
-                markersRef.current.push(marker);
+                newMarkers.push(marker);
+            }
+
+            if (!cancelled) {
+                markersRef.current = newMarkers;
+                // MarkerClusterer groups nearby pins into a count badge;
+                // clicking a cluster zooms in to reveal individual markers.
+                clustererRef.current = new MarkerClusterer({ map, markers: newMarkers });
             }
         })();
 
