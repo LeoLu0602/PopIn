@@ -6,8 +6,22 @@ import { supabase } from '../lib/supabase';
 import MapEventSheet from './MapEventSheet';
 
 const CONTAINER_ID = 'popin-google-map-container';
-// OSU campus center
 const OSU_CENTER = { lat: 40.0076, lng: -83.0458 };
+
+// Custom HTML pin shapes injected into AdvancedMarkerElement content
+const SINGLE_PIN_HTML = `
+  <div style="width:16px;height:16px;background:#BB0000;border-radius:50% 50% 50% 0;
+    transform:rotate(-45deg);border:2px solid #fff;cursor:pointer"></div>`;
+
+const multiPinHTML = (label: string) => `
+  <div style="position:relative;display:inline-block;cursor:pointer">
+    <div style="width:16px;height:16px;background:#BB0000;border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);border:2px solid #fff"></div>
+    <div style="position:absolute;top:-8px;right:-8px;background:#fff;color:#BB0000;
+      font-size:10px;font-weight:700;border-radius:50%;width:16px;height:16px;
+      display:flex;align-items:center;justify-content:center;border:1px solid #BB0000;
+      line-height:1">${label}</div>
+  </div>`;
 
 interface Props {
     events: EventWithDetails[];
@@ -134,56 +148,68 @@ export default function MapView({ events }: Props) {
         (async () => {
             const markerLib: any = await google.maps.importLibrary('marker');
             const { MarkerClusterer } = await import('@googlemaps/markerclusterer');
-            const newMarkers: any[] = [];
 
+            // Step 1 — resolve positions for all events
+            const resolved: Array<{ event: EventWithDetails; position: { lat: number; lng: number } }> = [];
             for (const event of events) {
                 if (cancelled) break;
-
-                // Prefer stored coordinates; fall back to geocoding for old events
                 let position: { lat: number; lng: number } | null = null;
                 if (event.location_lat != null && event.location_lng != null) {
                     position = { lat: event.location_lat, lng: event.location_lng };
                 } else if (event.location_text) {
                     position = await resolveEventLocation(event.location_text);
                 }
-                if (cancelled || !position) continue;
+                if (position) resolved.push({ event, position });
+            }
+            if (cancelled) return;
 
-                const pin = new markerLib.PinElement({
-                    background: '#BB0000',
-                    borderColor: '#A50000',
-                    glyphColor: '#fff',
-                });
+            // Step 2 — group by exact coordinates (one pin per unique lat/lng)
+            const locationMap = new Map<string, { position: { lat: number; lng: number }; events: EventWithDetails[] }>();
+            for (const { event, position } of resolved) {
+                const key = `${position.lat},${position.lng}`;
+                if (!locationMap.has(key)) locationMap.set(key, { position, events: [] });
+                locationMap.get(key)!.events.push(event);
+            }
 
-                // No `map` here — MarkerClusterer manages map assignment
+            // Step 3 — one AdvancedMarkerElement per unique location
+            const newMarkers: any[] = [];
+            for (const { position, events: locEvents } of locationMap.values()) {
+                if (cancelled) break;
+
+                const count = locEvents.length;
+                const badgeLabel = count >= 10 ? '9+' : String(count);
+
+                const pinContent = document.createElement('div');
+                pinContent.innerHTML = count === 1 ? SINGLE_PIN_HTML : multiPinHTML(badgeLabel);
+
+                // No `map` — MarkerClusterer manages assignment
                 const marker = new markerLib.AdvancedMarkerElement({
                     position,
-                    content: pin.element,
-                    title: event.title,
+                    content: pinContent,
+                    title: count === 1 ? locEvents[0].title : `${count} events`,
                 });
-                // Attach event data so the cluster click handler can read it
-                (marker as any).__event = event;
+                // Store all events at this location for cluster click handler
+                (marker as any).__events = locEvents;
 
-                const infoContent =
-                    `<div style="font-family:sans-serif;min-width:160px;padding:2px 0">` +
-                    `<strong style="font-size:13px">${event.title}</strong>` +
-                    `<div style="font-size:11px;color:#555;margin-top:4px">${new Date(event.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>` +
-                    `<div style="font-size:11px;color:#888;margin-top:2px">${event.attendee_count ?? 0} attending · click for details</div>` +
-                    `</div>`;
+                if (count === 1) {
+                    const event = locEvents[0];
+                    const infoContent =
+                        `<div style="font-family:sans-serif;min-width:160px;padding:2px 0">` +
+                        `<strong style="font-size:13px">${event.title}</strong>` +
+                        `<div style="font-size:11px;color:#555;margin-top:4px">${new Date(event.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>` +
+                        `<div style="font-size:11px;color:#888;margin-top:2px">${event.attendee_count ?? 0} attending · click for details</div>` +
+                        `</div>`;
 
-                // Hover — show info window
-                marker.element.addEventListener('mouseenter', () => {
-                    iw.setContent(infoContent);
-                    iw.open({ anchor: marker, map });
-                });
-                marker.element.addEventListener('mouseleave', () => {
-                    iw.close();
-                });
-
-                // Click — open side panel
-                marker.addListener('click', () => {
-                    iw.close();
-                    openPanel(event);
-                });
+                    pinContent.addEventListener('mouseenter', () => {
+                        iw.setContent(infoContent);
+                        iw.open({ anchor: marker, map });
+                    });
+                    pinContent.addEventListener('mouseleave', () => iw.close());
+                    marker.addListener('click', () => { iw.close(); openPanel(event); });
+                } else {
+                    // Badged pin — click opens bottom sheet
+                    marker.addListener('click', () => setSheetEvents(locEvents));
+                }
 
                 newMarkers.push(marker);
             }
@@ -193,12 +219,10 @@ export default function MapView({ events }: Props) {
                 clustererRef.current = new MarkerClusterer({
                     map,
                     markers: newMarkers,
-                    // Override default zoom-on-click: open sheet for multiple events,
-                    // open detail panel for a single-event cluster.
+                    // Cluster click: flatten __events from all markers in the cluster
                     onClusterClick: (_e, cluster) => {
                         const clusterEvents = (cluster.markers ?? [])
-                            .map((m: any) => m.__event as EventWithDetails)
-                            .filter(Boolean);
+                            .flatMap((m: any) => (m.__events ?? []) as EventWithDetails[]);
                         if (clusterEvents.length === 1) {
                             openPanel(clusterEvents[0]);
                         } else {
