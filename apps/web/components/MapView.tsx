@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'rea
 import type { EventWithDetails } from 'shared';
 import { resolveEventLocation } from '../lib/geocode';
 import { supabase } from '../lib/supabase';
+import MapEventSheet from './MapEventSheet';
 
 const CONTAINER_ID = 'popin-google-map-container';
 // OSU campus center
@@ -21,6 +22,7 @@ export default function MapView({ events }: Props) {
     const [mapReady, setMapReady] = useState(false);
     const [mapError, setMapError] = useState(false);
     const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+    const [sheetEvents, setSheetEvents] = useState<EventWithDetails[]>([]);
     const [selectedEvent, setSelectedEvent] = useState<EventWithDetails | null>(null);
     const [panelLoading, setPanelLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
@@ -158,6 +160,8 @@ export default function MapView({ events }: Props) {
                     content: pin.element,
                     title: event.title,
                 });
+                // Attach event data so the cluster click handler can read it
+                (marker as any).__event = event;
 
                 const infoContent =
                     `<div style="font-family:sans-serif;min-width:160px;padding:2px 0">` +
@@ -186,9 +190,22 @@ export default function MapView({ events }: Props) {
 
             if (!cancelled) {
                 markersRef.current = newMarkers;
-                // MarkerClusterer groups nearby pins into a count badge;
-                // clicking a cluster zooms in to reveal individual markers.
-                clustererRef.current = new MarkerClusterer({ map, markers: newMarkers });
+                clustererRef.current = new MarkerClusterer({
+                    map,
+                    markers: newMarkers,
+                    // Override default zoom-on-click: open sheet for multiple events,
+                    // open detail panel for a single-event cluster.
+                    onClusterClick: (_e, cluster) => {
+                        const clusterEvents = (cluster.markers ?? [])
+                            .map((m: any) => m.__event as EventWithDetails)
+                            .filter(Boolean);
+                        if (clusterEvents.length === 1) {
+                            openPanel(clusterEvents[0]);
+                        } else {
+                            setSheetEvents(clusterEvents);
+                        }
+                    },
+                });
             }
         })();
 
@@ -295,6 +312,18 @@ export default function MapView({ events }: Props) {
                     <Text style={{ fontSize: 16 }}>📍</Text>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>Where am I?</Text>
                 </TouchableOpacity>
+            )}
+
+            {/* Cluster bottom sheet */}
+            {sheetEvents.length > 0 && (
+                <MapEventSheet
+                    events={sheetEvents}
+                    onClose={() => setSheetEvents([])}
+                    onSelectEvent={(event) => {
+                        setSheetEvents([]);
+                        openPanel(event);
+                    }}
+                />
             )}
 
             {/* Event detail side panel */}
