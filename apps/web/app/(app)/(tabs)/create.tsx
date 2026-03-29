@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { uploadEventPhoto } from "../../../lib/storage";
 import { requestFeedRefresh } from "../../../lib/feedRefresh";
 import { createNotificationsForAttendees } from "../../../lib/notifications";
 import { getPostHog } from "../../../lib/posthog";
+import { resolveEventLocation } from "../../../lib/geocode";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 
 type RequiredField = "title" | "location";
@@ -104,6 +105,9 @@ export default function CreateEventScreen() {
   const [startDateTime, setStartDateTime] = useState(oneHourLater);
   const [endDateTime, setEndDateTime] = useState(twoHoursLater);
   const [location, setLocation] = useState("");
+  const [locationLat, setLocationLat] = useState<number | null>(null);
+  const [locationLng, setLocationLng] = useState<number | null>(null);
+  const locationInputRef = useRef<HTMLInputElement>(null);
   const [capacity, setCapacity] = useState("");
   const [description, setDescription] = useState("");
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
@@ -143,12 +147,48 @@ export default function CreateEventScreen() {
     });
   }, []);
 
+  // Google Places Autocomplete for the location field
+  useEffect(() => {
+    const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey || !locationInputRef.current) return;
+
+    let destroyed = false;
+
+    (async () => {
+      const { Loader } = await import('@googlemaps/js-api-loader');
+      const loader = new Loader({ apiKey, version: 'weekly', libraries: ['places'] });
+      const google = await loader.load();
+      if (destroyed || !locationInputRef.current) return;
+
+      const autocomplete = new google.maps.places.Autocomplete(locationInputRef.current, {
+        // Bias toward OSU campus bounding box
+        bounds: { north: 40.0220, south: 39.9880, east: -83.0100, west: -83.0680 },
+        fields: ['formatted_address', 'name', 'geometry'],
+        strictBounds: false,
+      });
+
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+        if (place.geometry?.location) {
+          setLocationLat(place.geometry.location.lat());
+          setLocationLng(place.geometry.location.lng());
+        }
+        // Use formatted_address if available, otherwise the place name
+        const displayText = place.formatted_address || place.name || '';
+        if (displayText) setLocation(displayText);
+        setFieldErrors((prev) => ({ ...prev, location: undefined }));
+      });
+    })();
+
+    return () => { destroyed = true; };
+  }, []);
+
   useEffect(() => {
     if (!isEditMode || !editId) return;
 
     (supabase
       .from("events")
-      .select("title, start_time, end_time, location_text, capacity, description, image_url")
+      .select("title, start_time, end_time, location_text, location_lat, location_lng, capacity, description, image_url")
       .eq("id", editId)
       .single() as any
     ).then(({ data, error }: { data: any; error: any }) => {
@@ -161,6 +201,8 @@ export default function CreateEventScreen() {
       setStartDateTime(new Date(data.start_time));
       setEndDateTime(new Date(data.end_time));
       setLocation(data.location_text);
+      setLocationLat(data.location_lat ?? null);
+      setLocationLng(data.location_lng ?? null);
       setCapacity(data.capacity ? String(data.capacity) : "");
       setDescription(data.description || "");
       setExistingImageUrl(data.image_url || null);
@@ -420,11 +462,23 @@ export default function CreateEventScreen() {
         nextImageUrl = null;
       }
 
+      // Resolve coordinates if location changed or coords are missing
+      let resolvedLat = locationLat;
+      let resolvedLng = locationLng;
+      const locationChanged = location.trim() !== originalEventRef.current?.location_text;
+      if (locationChanged || resolvedLat == null || resolvedLng == null) {
+        const coords = await resolveEventLocation(location.trim());
+        resolvedLat = coords?.lat ?? null;
+        resolvedLng = coords?.lng ?? null;
+      }
+
       const updatePayload: Record<string, any> = {
         title: title.trim(),
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
         location_text: location.trim(),
+        location_lat: resolvedLat,
+        location_lng: resolvedLng,
         capacity: capacityNum,
         description: description.trim() || null,
       };
@@ -510,6 +564,16 @@ export default function CreateEventScreen() {
         }
       }
 
+      // Resolve coordinates — Places Autocomplete may have already set them,
+      // otherwise fall back to the OSU dictionary + Google geocoding pipeline.
+      let resolvedLat = locationLat;
+      let resolvedLng = locationLng;
+      if (resolvedLat == null || resolvedLng == null) {
+        const coords = await resolveEventLocation(location.trim());
+        resolvedLat = coords?.lat ?? null;
+        resolvedLng = coords?.lng ?? null;
+      }
+
       // @ts-expect-error - Supabase type inference issue
       const { data: eventData, error } = await supabase.from("events").insert({
         host_id: user.id,
@@ -517,6 +581,8 @@ export default function CreateEventScreen() {
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
         location_text: location.trim(),
+        location_lat: resolvedLat,
+        location_lng: resolvedLng,
         capacity: capacityNum,
         description: description.trim() || null,
         image_url: imageUrl,
@@ -551,6 +617,8 @@ export default function CreateEventScreen() {
         setStartDateTime(new Date(resetNow.getTime() + 60 * 60 * 1000));
         setEndDateTime(new Date(resetNow.getTime() + 2 * 60 * 60 * 1000));
         setLocation("");
+        setLocationLat(null);
+        setLocationLng(null);
         setCapacity("");
         setDescription("");
         setEventPhoto(null);
@@ -679,17 +747,23 @@ export default function CreateEventScreen() {
 
             <View className="px-5 py-4 border-b border-gray-200">
             {renderRequiredLabel("Location")}
-            <TextInput
-              className={getInputClassName("location")}
-              placeholder="e.g., Thompson Library, Room 150"
-              placeholderTextColor={PLACEHOLDER_COLOR}
+            {/* Native input so Google Places Autocomplete can attach to the DOM element */}
+            <input
+              ref={locationInputRef}
+              type="text"
+              placeholder="e.g., Ohio Union, Smith Lab Room 133"
               value={location}
-              onChangeText={(value) => {
-                setLocation(value);
-                if (fieldErrors.location && value.trim()) {
+              onChange={(e) => {
+                setLocation(e.target.value);
+                // Clear stored coords when user edits manually to prevent mismatch
+                setLocationLat(null);
+                setLocationLng(null);
+                if (fieldErrors.location && e.target.value.trim()) {
                   setFieldErrors((prev) => ({ ...prev, location: undefined }));
                 }
               }}
+              className="web-datetime-input"
+              style={{ borderColor: fieldErrors.location ? '#ef4444' : '#d1d5db', width: '100%' }}
             />
             {fieldErrors.location && (
               <Text className="text-red-500 text-sm mt-1">{fieldErrors.location}</Text>
