@@ -195,14 +195,7 @@ export default function TabsLayout() {
                     marginTop: 2,
                 },
                 sceneStyle: {},
-                headerStyle: {
-                    backgroundColor: '#BB0000',
-                },
-                headerTintColor: '#FFFFFF',
-                headerTitleStyle: {
-                    fontWeight: 'bold',
-                },
-                headerTitleAlign: 'center',
+                headerShown: false,
             }}
         >
             <Tabs.Screen

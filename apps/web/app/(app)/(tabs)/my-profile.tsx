@@ -229,7 +229,7 @@ export default function MyProfileScreen() {
     return (
         <ScrollView
             className="flex-1 bg-osu-light"
-            contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+            contentContainerStyle={{ padding: 16, paddingBottom: 88 }}
             keyboardShouldPersistTaps="handled"
         >
             <View className="gap-4">

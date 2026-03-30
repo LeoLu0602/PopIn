@@ -19,6 +19,8 @@ export interface Event {
   start_time: string;
   end_time: string;
   location_text: string;
+  location_lat: number | null;
+  location_lng: number | null;
   capacity: number | null;
   description: string | null;
   image_url: string | null;

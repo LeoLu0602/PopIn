@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import {
     View,
     Text,
@@ -6,6 +6,7 @@ import {
     RefreshControl,
     TouchableOpacity,
     Alert,
+    ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
@@ -14,6 +15,10 @@ import { EventCard } from '../../../components/EventCard';
 import { VisibilityTracker } from '../../../components/VisibilityTracker';
 import { getPostHog, buildEventProps } from '../../../lib/posthog';
 import { consumeFeedRefreshRequest } from '../../../lib/feedRefresh';
+
+const MapView = lazy(() => import('../../../components/MapView'));
+
+type ViewMode = 'list' | 'map';
 
 type FilterType = 'all' | 'next3hours' | 'today';
 
@@ -37,6 +42,7 @@ export default function FeedScreen() {
     );
     const [loading, setLoading] = useState(() => !feedCache.all);
     const [filter, setFilter] = useState<FilterType>('all');
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [userId, setUserId] = useState<string | null>(null);
     // Dedup guard: track event IDs that have already fired event_viewed this session
     const viewedIdsRef = useRef(new Set<string>());
@@ -134,34 +140,39 @@ export default function FeedScreen() {
 
     return (
         <View className="flex-1 bg-gray-100">
-            <View className="px-4 py-3 items-center">
+            {/* Controls: view toggle + filter pills */}
+            <View className="px-4 py-3 flex-row items-center justify-between">
+                {/* List / Map toggle */}
+                <View className="flex-row items-center rounded-full border border-gray-300 p-1">
+                    {(['list', 'map'] as const).map((mode, i) => {
+                        const isActive = viewMode === mode;
+                        return (
+                            <TouchableOpacity
+                                key={mode}
+                                onPress={() => setViewMode(mode)}
+                                className={`px-4 py-2 rounded-full ${isActive ? 'bg-osu-scarlet' : 'bg-transparent'}`}
+                                style={{ marginRight: i === 0 ? 4 : 0 }}
+                            >
+                                <Text className={`font-semibold ${isActive ? 'text-white' : 'text-gray-700'}`}>
+                                    {mode === 'list' ? 'List' : 'Map'}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+
+                {/* All / Next 3h / Today filter pills */}
                 <View className="flex-row items-center rounded-full border border-gray-300 p-1">
                     {FILTER_OPTIONS.map((option, index) => {
                         const isActive = filter === option.value;
-
                         return (
                             <TouchableOpacity
                                 key={option.value}
                                 onPress={() => setFilter(option.value)}
-                                className={`px-4 py-2 rounded-full ${
-                                    isActive
-                                        ? 'bg-osu-scarlet'
-                                        : 'bg-transparent'
-                                }`}
-                                style={{
-                                    marginRight:
-                                        index < FILTER_OPTIONS.length - 1
-                                            ? 4
-                                            : 0,
-                                }}
+                                className={`px-4 py-2 rounded-full ${isActive ? 'bg-osu-scarlet' : 'bg-transparent'}`}
+                                style={{ marginRight: index < FILTER_OPTIONS.length - 1 ? 4 : 0 }}
                             >
-                                <Text
-                                    className={`font-semibold ${
-                                        isActive
-                                            ? 'text-white'
-                                            : 'text-gray-700'
-                                    }`}
-                                >
+                                <Text className={`font-semibold ${isActive ? 'text-white' : 'text-gray-700'}`}>
                                     {option.label}
                                 </Text>
                             </TouchableOpacity>
@@ -170,47 +181,53 @@ export default function FeedScreen() {
                 </View>
             </View>
 
-            <ScrollView
-                className="flex-1"
-                contentContainerStyle={{ paddingTop: 16, paddingBottom: 0 }}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={loading}
-                        onRefresh={() => fetchEvents(true)}
-                        tintColor="#BB0000"
-                    />
-                }
-            >
-                {events.length === 0 && !loading && (
-                    <View className="items-center justify-center py-12">
-                        <Text className="text-gray-500 text-lg">
-                            No events found
-                        </Text>
-                        <Text className="text-gray-400 mt-2">
-                            Try a different filter
-                        </Text>
-                    </View>
-                )}
-
-                {events.map((event, index) => (
-                    <VisibilityTracker
-                        key={event.id}
-                        onVisible={() => {
-                            if (!viewedIdsRef.current.has(event.id)) {
-                                viewedIdsRef.current.add(event.id);
-                                getPostHog().capture('event_viewed', {
-                                    ...buildEventProps(event),
-                                    event_position: index + 1,
-                                });
-                            }
-                        }}
-                    >
-                        <View className="mx-4 mb-4">
-                            <EventCard event={event} />
+            {viewMode === 'map' ? (
+                <Suspense fallback={<ActivityIndicator size="large" color="#BE0000" style={{ marginTop: 40 }} />}>
+                    <MapView events={events} />
+                </Suspense>
+            ) : (
+                <ScrollView
+                    className="flex-1"
+                    contentContainerStyle={{ paddingTop: 16, paddingBottom: 88 }}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={loading}
+                            onRefresh={() => fetchEvents(true)}
+                            tintColor="#BB0000"
+                        />
+                    }
+                >
+                    {events.length === 0 && !loading && (
+                        <View className="items-center justify-center py-12">
+                            <Text className="text-gray-500 text-lg">
+                                No events found
+                            </Text>
+                            <Text className="text-gray-400 mt-2">
+                                Try a different filter
+                            </Text>
                         </View>
-                    </VisibilityTracker>
-                ))}
-            </ScrollView>
+                    )}
+
+                    {events.map((event, index) => (
+                        <VisibilityTracker
+                            key={event.id}
+                            onVisible={() => {
+                                if (!viewedIdsRef.current.has(event.id)) {
+                                    viewedIdsRef.current.add(event.id);
+                                    getPostHog().capture('event_viewed', {
+                                        ...buildEventProps(event),
+                                        event_position: index + 1,
+                                    });
+                                }
+                            }}
+                        >
+                            <View className="mx-4 mb-4">
+                                <EventCard event={event} />
+                            </View>
+                        </VisibilityTracker>
+                    ))}
+                </ScrollView>
+            )}
         </View>
     );
 }

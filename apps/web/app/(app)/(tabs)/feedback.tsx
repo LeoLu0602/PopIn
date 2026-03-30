@@ -139,7 +139,7 @@ export default function FeedbackScreen() {
     >
       <ScrollView
         className="flex-1 bg-osu-light"
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 88 }}
       >
         <Card>
           <Text className="text-2xl font-bold text-osu-dark mb-2">
