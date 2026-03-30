@@ -214,7 +214,7 @@ export default function MyEventsScreen() {
 
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingTop: 4, paddingBottom: 16 }}
+        contentContainerStyle={{ paddingTop: 4, paddingBottom: 88 }}
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={fetchMyEvents} tintColor="#BB0000" />
         }

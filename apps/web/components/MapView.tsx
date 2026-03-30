@@ -1,27 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import type { EventWithDetails } from 'shared';
 import { resolveEventLocation } from '../lib/geocode';
 import { supabase } from '../lib/supabase';
+import { loadGoogleMaps } from '../lib/googleMaps';
 import MapEventSheet from './MapEventSheet';
 
 const CONTAINER_ID = 'popin-google-map-container';
-const OSU_CENTER = { lat: 40.0076, lng: -83.0458 };
-
-// Custom HTML pin shapes injected into AdvancedMarkerElement content
-const SINGLE_PIN_HTML = `
-  <div style="width:16px;height:16px;background:#BB0000;border-radius:50% 50% 50% 0;
-    transform:rotate(-45deg);border:2px solid #fff;cursor:pointer"></div>`;
-
-const multiPinHTML = (label: string) => `
-  <div style="position:relative;display:inline-block;cursor:pointer">
-    <div style="width:16px;height:16px;background:#BB0000;border-radius:50% 50% 50% 0;
-      transform:rotate(-45deg);border:2px solid #fff"></div>
-    <div style="position:absolute;top:-8px;right:-8px;background:#fff;color:#BB0000;
-      font-size:10px;font-weight:700;border-radius:50%;width:16px;height:16px;
-      display:flex;align-items:center;justify-content:center;border:1px solid #BB0000;
-      line-height:1">${label}</div>
-  </div>`;
+const OSU_CENTER = { lat: 39.9996305361392, lng: -83.0126973595988 };
 
 interface Props {
     events: EventWithDetails[];
@@ -53,21 +40,13 @@ export default function MapView({ events }: Props) {
         let destroyed = false;
 
         (async () => {
-            const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-            if (!apiKey) {
+            if (!process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) {
                 setMapError(true);
                 return;
             }
 
             try {
-                const { Loader } = await import('@googlemaps/js-api-loader');
-                const loader = new Loader({
-                    apiKey,
-                    version: 'weekly',
-                    libraries: ['marker', 'places', 'geocoding'],
-                });
-
-                const google = await loader.load();
+                const google = await loadGoogleMaps();
                 if (destroyed) return;
 
                 googleRef.current = google;
@@ -81,7 +60,11 @@ export default function MapView({ events }: Props) {
                     // DEMO_MAP_ID enables Advanced Markers.
                     // Replace with a real Map ID from Google Cloud Console for production.
                     mapId: 'DEMO_MAP_ID',
-                    disableDefaultUI: false,
+                    disableDefaultUI: true,
+                    mapTypeControl: true,
+                    fullscreenControl: true,
+                    // Push Google's built-in controls (zoom, fullscreen) above the nav bar
+                    padding: { bottom: 72 },
                 });
 
                 mapRef.current = map;
@@ -89,30 +72,17 @@ export default function MapView({ events }: Props) {
 
                 setMapReady(true);
 
-                // User location pin
+                // Attempt silent geolocation on load (works on HTTPS / localhost).
+                // On HTTP local network it will fail silently — the button is always
+                // visible and re-requests location when tapped.
                 navigator.geolocation.getCurrentPosition(
                     ({ coords }) => {
                         if (destroyed) return;
                         const loc = { lat: coords.latitude, lng: coords.longitude };
                         setUserLocation(loc);
-                        map.setCenter(loc);
-
-                        google.maps.importLibrary('marker').then((markerLib: any) => {
-                            if (destroyed) return;
-                            const userPin = new markerLib.PinElement({
-                                background: '#4287f5',
-                                borderColor: '#2d6ad6',
-                                glyphColor: '#fff',
-                            });
-                            new markerLib.AdvancedMarkerElement({
-                                position: loc,
-                                map,
-                                content: userPin.element,
-                                title: 'You are here',
-                            });
-                        });
+                        map.panTo(loc);
                     },
-                    (err) => console.error('Geolocation error:', err.code, err.message),
+                    () => { /* silently ignore — button tap will retry */ },
                 );
             } catch (err) {
                 console.error('[MapView] Failed to load Google Maps:', err);
@@ -163,29 +133,43 @@ export default function MapView({ events }: Props) {
             }
             if (cancelled) return;
 
-            // Step 2 — group by exact coordinates (one pin per unique lat/lng)
-            const locationMap = new Map<string, { position: { lat: number; lng: number }; events: EventWithDetails[] }>();
+            // Step 2 — group events within 150m of each other as the same location.
+            // Places autocomplete and Geocoding API return different coordinates for the
+            // same named building (can differ by ~100m), so exact or rounded key matching
+            // would create duplicate pins.
+            const locationGroups: { position: { lat: number; lng: number }; events: EventWithDetails[] }[] = [];
+            const metersPerDegLat = 111320;
             for (const { event, position } of resolved) {
-                const key = `${position.lat},${position.lng}`;
-                if (!locationMap.has(key)) locationMap.set(key, { position, events: [] });
-                locationMap.get(key)!.events.push(event);
+                const existing = locationGroups.find(({ position: p }) => {
+                    const dLat = (position.lat - p.lat) * metersPerDegLat;
+                    const dLng = (position.lng - p.lng) * metersPerDegLat * Math.cos(p.lat * Math.PI / 180);
+                    return Math.sqrt(dLat * dLat + dLng * dLng) < 150;
+                });
+                if (existing) {
+                    existing.events.push(event);
+                } else {
+                    locationGroups.push({ position, events: [event] });
+                }
             }
 
             // Step 3 — one AdvancedMarkerElement per unique location
             const newMarkers: any[] = [];
-            for (const { position, events: locEvents } of locationMap.values()) {
+            for (const { position, events: locEvents } of locationGroups) {
                 if (cancelled) break;
 
                 const count = locEvents.length;
-                const badgeLabel = count >= 10 ? '9+' : String(count);
 
-                const pinContent = document.createElement('div');
-                pinContent.innerHTML = count === 1 ? SINGLE_PIN_HTML : multiPinHTML(badgeLabel);
+                const pin = new markerLib.PinElement({
+                    background: '#BB0000',
+                    borderColor: '#800000',
+                    glyphColor: 'white',
+                    glyphText: count <= 9 ? String(count) : '9+',
+                });
 
                 // No `map` — MarkerClusterer manages assignment
                 const marker = new markerLib.AdvancedMarkerElement({
                     position,
-                    content: pinContent,
+                    content: pin.element,
                     title: count === 1 ? locEvents[0].title : `${count} events`,
                 });
                 // Store all events at this location for cluster click handler
@@ -200,11 +184,11 @@ export default function MapView({ events }: Props) {
                         `<div style="font-size:11px;color:#888;margin-top:2px">${event.attendee_count ?? 0} attending · click for details</div>` +
                         `</div>`;
 
-                    pinContent.addEventListener('mouseenter', () => {
+                    pin.element.addEventListener('mouseenter', () => {
                         iw.setContent(infoContent);
                         iw.open({ anchor: marker, map });
                     });
-                    pinContent.addEventListener('mouseleave', () => iw.close());
+                    pin.element.addEventListener('mouseleave', () => iw.close());
                     marker.addListener('click', () => { iw.close(); openPanel(event); });
                 } else {
                     // Badged pin — click opens bottom sheet
@@ -219,6 +203,23 @@ export default function MapView({ events }: Props) {
                 clustererRef.current = new MarkerClusterer({
                     map,
                     markers: newMarkers,
+                    // Custom renderer: show total event count, not marker count
+                    renderer: {
+                        render: ({ markers: clusterMarkers, position }: any) => {
+                            const totalEvents = (clusterMarkers ?? [])
+                                .reduce((sum: number, m: any) => sum + (m.__events?.length ?? 1), 0);
+                            const label = totalEvents <= 9 ? String(totalEvents) : '9+';
+                            const el = document.createElement('div');
+                            el.style.cssText = `
+                                background:#BB0000;border:2px solid #800000;border-radius:50%;
+                                color:white;font-size:13px;font-weight:700;
+                                width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+                                cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.3);
+                            `;
+                            el.textContent = label;
+                            return new markerLib.AdvancedMarkerElement({ position, content: el });
+                        },
+                    },
                     // Cluster click: flatten __events from all markers in the cluster
                     onClusterClick: (_e, cluster) => {
                         const clusterEvents = (cluster.markers ?? [])
@@ -277,10 +278,48 @@ export default function MapView({ events }: Props) {
         openPanel(selectedEvent);
     };
 
+    const userPinRef = useRef<any>(null);
+
     const goToMyLocation = () => {
-        if (mapRef.current && userLocation) {
-            mapRef.current.panTo(userLocation);
-            mapRef.current.setZoom(16);
+        if (!mapRef.current) return;
+        const map = mapRef.current;
+
+        const placePin = (loc: { lat: number; lng: number }) => {
+            map.panTo(loc);
+            map.setZoom(16);
+            // Place or move the blue user pin
+            if (googleRef.current) {
+                googleRef.current.maps.importLibrary('marker').then((markerLib: any) => {
+                    if (userPinRef.current) {
+                        userPinRef.current.position = loc;
+                    } else {
+                        const pin = new markerLib.PinElement({
+                            background: '#4287f5',
+                            borderColor: '#2d6ad6',
+                            glyphColor: '#fff',
+                        });
+                        userPinRef.current = new markerLib.AdvancedMarkerElement({
+                            position: loc,
+                            map,
+                            content: pin.element,
+                            title: 'You are here',
+                        });
+                    }
+                });
+            }
+        };
+
+        if (userLocation) {
+            placePin(userLocation);
+        } else {
+            navigator.geolocation.getCurrentPosition(
+                ({ coords }) => {
+                    const loc = { lat: coords.latitude, lng: coords.longitude };
+                    setUserLocation(loc);
+                    placePin(loc);
+                },
+                (err) => console.error('Geolocation error:', err.code, err.message),
+            );
         }
     };
 
@@ -296,7 +335,7 @@ export default function MapView({ events }: Props) {
     }
 
     return (
-        <View style={{ height: 'calc(100vh - 200px)' as any, width: '100%', position: 'relative' }}>
+        <View style={{ height: 'calc(100dvh - 72px)' as any, width: '100%', position: 'relative' }}>
             {/* Map container */}
             <View
                 nativeID={CONTAINER_ID}
@@ -310,31 +349,29 @@ export default function MapView({ events }: Props) {
                 </View>
             )}
 
-            {/* Locate me button */}
-            {userLocation && (
+            {/* Locate me button — always visible; tapping requests location if not yet granted */}
+            {mapReady && (
                 <TouchableOpacity
                     onPress={goToMyLocation}
                     style={{
                         position: 'absolute',
-                        bottom: 24,
-                        right: selectedEvent ? 336 : 16,
+                        bottom: 120,
+                        right: 10,
                         backgroundColor: '#fff',
-                        borderRadius: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        flexDirection: 'row',
+                        borderRadius: 50,
+                        width: 40,
+                        height: 40,
                         alignItems: 'center',
-                        gap: 6,
+                        justifyContent: 'center',
                         shadowColor: '#000',
                         shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.2,
+                        shadowOpacity: 0.25,
                         shadowRadius: 4,
                         elevation: 4,
-                        zIndex: 10,
+                        zIndex: 9999,
                     } as any}
                 >
-                    <Text style={{ fontSize: 16 }}>📍</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151' }}>Where am I?</Text>
+                    <MaterialIcons name="my-location" size={22} color="#4285F4" />
                 </TouchableOpacity>
             )}
 
@@ -353,7 +390,8 @@ export default function MapView({ events }: Props) {
             {/* Event detail side panel */}
             {selectedEvent && (
                 <View style={{
-                    position: 'absolute', top: 0, right: 0, bottom: 0, width: 320,
+                    position: 'absolute', top: 0, right: 0, bottom: 0,
+                    width: typeof window !== 'undefined' && window.innerWidth < 768 ? '100%' : 320,
                     backgroundColor: '#fff', zIndex: 20,
                     shadowColor: '#000', shadowOffset: { width: -2, height: 0 },
                     shadowOpacity: 0.15, shadowRadius: 10, elevation: 8,
@@ -365,7 +403,7 @@ export default function MapView({ events }: Props) {
                         <Text style={{ fontSize: 18, color: '#9ca3af' }}>✕</Text>
                     </TouchableOpacity>
 
-                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 92 }}>
                         {panelLoading ? (
                             <ActivityIndicator size="large" color="#BB0000" style={{ marginTop: 80 }} />
                         ) : (

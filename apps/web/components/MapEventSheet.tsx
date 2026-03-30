@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Animated, Pressable, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import type { EventWithDetails } from 'shared';
 
 interface Props {
@@ -9,6 +10,10 @@ interface Props {
 }
 
 export default function MapEventSheet({ events, onClose, onSelectEvent }: Props) {
+    const insets = useSafeAreaInsets();
+    const bottomOffset = insets.bottom + 72;
+    const { height: windowHeight } = useWindowDimensions();
+    const maxSheetHeight = windowHeight * 0.5;
     const slideAnim = useRef(new Animated.Value(400)).current;
 
     // Slide up on mount
@@ -43,10 +48,12 @@ export default function MapEventSheet({ events, onClose, onSelectEvent }: Props)
             <Animated.View
                 style={{
                     position: 'absolute',
-                    bottom: 0,
+                    bottom: bottomOffset,
                     left: 0,
                     right: 0,
-                    maxHeight: '50%',
+                    maxHeight: maxSheetHeight,
+                    display: 'flex' as any,
+                    flexDirection: 'column',
                     backgroundColor: '#fff',
                     borderTopLeftRadius: 16,
                     borderTopRightRadius: 16,
@@ -89,18 +96,13 @@ export default function MapEventSheet({ events, onClose, onSelectEvent }: Props)
                 </View>
 
                 {/* Event rows */}
-                <ScrollView bounces={false}>
-                    {events.map((event, i) => (
+                <ScrollView bounces={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+                    {events.map((event) => (
                         <TouchableOpacity
                             key={event.id}
-                            onPress={() => onSelectEvent(event)}
+                            onPress={() => { onSelectEvent(event); onClose(); }}
                             activeOpacity={0.7}
-                            style={{
-                                paddingHorizontal: 20,
-                                paddingVertical: 14,
-                                borderBottomWidth: i < events.length - 1 ? 1 : 0,
-                                borderBottomColor: '#f3f4f6',
-                            }}
+                            style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
                         >
                             <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 3 }}>
                                 {event.title}

@@ -188,7 +188,7 @@ export default function FeedScreen() {
             ) : (
                 <ScrollView
                     className="flex-1"
-                    contentContainerStyle={{ paddingTop: 16, paddingBottom: 0 }}
+                    contentContainerStyle={{ paddingTop: 16, paddingBottom: 88 }}
                     refreshControl={
                         <RefreshControl
                             refreshing={loading}

@@ -20,6 +20,7 @@ import { requestFeedRefresh } from "../../../lib/feedRefresh";
 import { createNotificationsForAttendees } from "../../../lib/notifications";
 import { getPostHog } from "../../../lib/posthog";
 import { resolveEventLocation } from "../../../lib/geocode";
+import { loadGoogleMaps } from "../../../lib/googleMaps";
 import { PrimaryButton, SecondaryButton } from "../../../components/Button";
 
 type RequiredField = "title" | "location";
@@ -149,15 +150,12 @@ export default function CreateEventScreen() {
 
   // Google Places Autocomplete for the location field
   useEffect(() => {
-    const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!apiKey || !locationInputRef.current) return;
+    if (!process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || !locationInputRef.current) return;
 
     let destroyed = false;
 
     (async () => {
-      const { Loader } = await import('@googlemaps/js-api-loader');
-      const loader = new Loader({ apiKey, version: 'weekly', libraries: ['places'] });
-      const google = await loader.load();
+      const google = await loadGoogleMaps();
       if (destroyed || !locationInputRef.current) return;
 
       const autocomplete = new google.maps.places.Autocomplete(locationInputRef.current, {
@@ -173,8 +171,8 @@ export default function CreateEventScreen() {
           setLocationLat(place.geometry.location.lat());
           setLocationLng(place.geometry.location.lng());
         }
-        // Use formatted_address if available, otherwise the place name
-        const displayText = place.formatted_address || place.name || '';
+        // Prefer the place name (e.g. "Ohio Union") over the street address
+        const displayText = place.name || place.formatted_address || '';
         if (displayText) setLocation(displayText);
         setFieldErrors((prev) => ({ ...prev, location: undefined }));
       });
@@ -640,7 +638,7 @@ export default function CreateEventScreen() {
     <View className="flex-1">
       <ScrollView
         className="flex-1 bg-white"
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: 88 }}
         showsVerticalScrollIndicator={false}
       >
         <View className="p-4" style={{ width: "100%", maxWidth: 920, alignSelf: "center" }}>
