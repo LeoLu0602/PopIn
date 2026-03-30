@@ -81,8 +81,10 @@ export default function MapView({ events }: Props) {
                         const loc = { lat: coords.latitude, lng: coords.longitude };
                         setUserLocation(loc);
                         map.panTo(loc);
+                        placeUserPin(loc, false);
                     },
                     () => { /* silently ignore — button tap will retry */ },
+                    { maximumAge: 30000, timeout: 10000, enableHighAccuracy: false },
                 );
             } catch (err) {
                 console.error('[MapView] Failed to load Google Maps:', err);
@@ -280,45 +282,43 @@ export default function MapView({ events }: Props) {
 
     const userPinRef = useRef<any>(null);
 
-    const goToMyLocation = () => {
-        if (!mapRef.current) return;
+    const placeUserPin = (loc: { lat: number; lng: number }, panTo = true) => {
         const map = mapRef.current;
-
-        const placePin = (loc: { lat: number; lng: number }) => {
-            map.panTo(loc);
-            map.setZoom(16);
-            // Place or move the blue user pin
-            if (googleRef.current) {
-                googleRef.current.maps.importLibrary('marker').then((markerLib: any) => {
-                    if (userPinRef.current) {
-                        userPinRef.current.position = loc;
-                    } else {
-                        const pin = new markerLib.PinElement({
-                            background: '#4287f5',
-                            borderColor: '#2d6ad6',
-                            glyphColor: '#fff',
-                        });
-                        userPinRef.current = new markerLib.AdvancedMarkerElement({
-                            position: loc,
-                            map,
-                            content: pin.element,
-                            title: 'You are here',
-                        });
-                    }
+        if (!map || !googleRef.current) return;
+        if (panTo) { map.panTo(loc); map.setZoom(16); }
+        googleRef.current.maps.importLibrary('marker').then((markerLib: any) => {
+            if (userPinRef.current) {
+                userPinRef.current.position = loc;
+            } else {
+                const pin = new markerLib.PinElement({
+                    background: '#4287f5',
+                    borderColor: '#2d6ad6',
+                    glyphColor: '#fff',
+                });
+                userPinRef.current = new markerLib.AdvancedMarkerElement({
+                    position: loc,
+                    map,
+                    content: pin.element,
+                    title: 'You are here',
                 });
             }
-        };
+        });
+    };
+
+    const goToMyLocation = () => {
+        if (!mapRef.current) return;
 
         if (userLocation) {
-            placePin(userLocation);
+            placeUserPin(userLocation);
         } else {
             navigator.geolocation.getCurrentPosition(
                 ({ coords }) => {
                     const loc = { lat: coords.latitude, lng: coords.longitude };
                     setUserLocation(loc);
-                    placePin(loc);
+                    placeUserPin(loc);
                 },
                 (err) => console.error('Geolocation error:', err.code, err.message),
+                { maximumAge: 30000, timeout: 10000, enableHighAccuracy: false },
             );
         }
     };
