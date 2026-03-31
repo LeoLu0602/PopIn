@@ -69,13 +69,16 @@ function normalizeLocation(text: string): string {
 // ---------------------------------------------------------------------------
 export async function geocodeAddress(address: string): Promise<LatLng | null> {
     try {
-        // Prefer the JS API Geocoder when it's available (uses the browser key
-        // that's already loaded for the map — no extra key exposure).
+        // Try the JS API Geocoder first when available. It may fail if the
+        // browser key doesn't have the Geocoding API enabled, so fall through
+        // to the Edge Function proxy in that case.
         if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
-            return await geocodeWithJsApi(address);
+            const result = await geocodeWithJsApi(address);
+            if (result) return result;
         }
 
-        // Fallback: server-side proxy Edge Function — keeps the server key out of the browser.
+        // Fallback: server-side proxy Edge Function — uses the server key
+        // which has Geocoding API enabled.
         return await geocodeWithEdgeFunction(address);
     } catch (err) {
         console.error('[geocode] geocodeAddress error:', err);
@@ -107,27 +110,13 @@ async function geocodeWithJsApi(address: string): Promise<LatLng | null> {
 }
 
 async function geocodeWithEdgeFunction(address: string): Promise<LatLng | null> {
-    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl) return null;
-
-    // Forward the user's session token so the Edge Function can apply per-user
-    // rate limiting. Guests (no session) are allowed through without a token.
     const { supabase } = await import('./supabase');
     const { data: { session } } = await supabase.auth.getSession();
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-    }
-
-    const res = await fetch(`${supabaseUrl}/functions/v1/geocode`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ address }),
+    const { data, error } = await supabase.functions.invoke('geocode', {
+        body: { address },
+        headers: { Authorization: `Bearer ${session!.access_token}` },
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.lat == null || data.lng == null) return null;
+    if (error || data?.lat == null || data?.lng == null) return null;
     return { lat: data.lat, lng: data.lng };
 }
 

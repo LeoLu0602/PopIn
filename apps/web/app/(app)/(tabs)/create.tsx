@@ -174,7 +174,7 @@ export default function CreateEventScreen() {
     })();
 
     return () => { destroyed = true; };
-  }, []);
+  }, [editLoading]);
 
   useEffect(() => {
     if (!isEditMode || !editId) return;
