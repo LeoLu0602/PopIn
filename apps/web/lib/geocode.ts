@@ -1,7 +1,8 @@
 // BROWSER KEY — restricted to Maps JavaScript API + Places API in Google Cloud Console.
 // Domain restriction: https://pop-in-osu.vercel.app/* and https://*.vercel.app/*
-// For geocoding at creation time we use google.maps.Geocoder (part of Maps JS API)
-// so we never need to expose a separate server-side key from the browser.
+// For geocoding at creation time we prefer google.maps.Geocoder (part of Maps JS API).
+// When the JS API isn't loaded yet we call our server-side Edge Function proxy
+// instead of hitting maps.googleapis.com directly with the public key.
 
 export interface LatLng {
     lat: number;
@@ -68,16 +69,17 @@ function normalizeLocation(text: string): string {
 // ---------------------------------------------------------------------------
 export async function geocodeAddress(address: string): Promise<LatLng | null> {
     try {
-        // Prefer the JS API Geocoder when it's available (uses the browser key
-        // that's already loaded for the map — no extra key exposure).
+        // Try the JS API Geocoder first when available. It may fail if the
+        // browser key doesn't have the Geocoding API enabled, so fall through
+        // to the Edge Function proxy in that case.
         if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
-            return await geocodeWithJsApi(address);
+            const result = await geocodeWithJsApi(address);
+            if (result) return result;
         }
 
-        // Fallback: REST Geocoding API using the public browser key
-        const key = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-        if (!key) return null;
-        return await geocodeWithRestApi(address, key);
+        // Fallback: server-side proxy Edge Function — uses the server key
+        // which has Geocoding API enabled.
+        return await geocodeWithEdgeFunction(address);
     } catch (err) {
         console.error('[geocode] geocodeAddress error:', err);
         return null;
@@ -107,18 +109,15 @@ async function geocodeWithJsApi(address: string): Promise<LatLng | null> {
     });
 }
 
-async function geocodeWithRestApi(address: string, key: string): Promise<LatLng | null> {
-    const encoded = encodeURIComponent(address);
-    const url =
-        `https://maps.googleapis.com/maps/api/geocode/json` +
-        `?address=${encoded}` +
-        `&bounds=39.9880,-83.0680|40.0220,-83.0100` +
-        `&key=${key}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    const result = data.results?.[0];
-    if (!result) return null;
-    return result.geometry.location as LatLng;
+async function geocodeWithEdgeFunction(address: string): Promise<LatLng | null> {
+    const { supabase } = await import('./supabase');
+    const { data: { session } } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('geocode', {
+        body: { address },
+        headers: { Authorization: `Bearer ${session!.access_token}` },
+    });
+    if (error || data?.lat == null || data?.lng == null) return null;
+    return { lat: data.lat, lng: data.lng };
 }
 
 // ---------------------------------------------------------------------------

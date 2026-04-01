@@ -90,7 +90,6 @@ const toMinutePrecision = (date: Date): Date => {
   return next;
 };
 
-const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000;
 const PLACEHOLDER_COLOR = "#9ca3af";
 
@@ -131,10 +130,6 @@ export default function CreateEventScreen() {
   const [showRangeWarning, setShowRangeWarning] = useState(false);
   const [rangeWarningMessage, setRangeWarningMessage] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
-  const nowMinute = toMinutePrecision(new Date());
-  const maxStartDateTime = new Date(nowMinute.getTime() + FORTY_EIGHT_HOURS_MS);
-  const startAtMinute = toMinutePrecision(startDateTime);
-  const isStartTooFar = startAtMinute.getTime() > maxStartDateTime.getTime();
 
   useEffect(() => {
     if (endDateTime <= startDateTime) {
@@ -179,7 +174,7 @@ export default function CreateEventScreen() {
     })();
 
     return () => { destroyed = true; };
-  }, []);
+  }, [editLoading]);
 
   useEffect(() => {
     if (!isEditMode || !editId) return;
@@ -269,26 +264,20 @@ export default function CreateEventScreen() {
 
   const clampStartDateTime = (dt: Date): Date => {
     const now = toMinutePrecision(new Date());
-    const max = new Date(now.getTime() + FORTY_EIGHT_HOURS_MS);
     if (dt < now) return new Date(now);
-    if (dt > max) return new Date(max);
     return dt;
   };
 
-  const notifyStartRangeViolation = (maxAllowed: Date) => {
-    setRangeWarningMessage(
-      `Start time must be between now and ${formatDate(maxAllowed)} ${formatTime(maxAllowed)}.`,
-    );
+  const notifyStartRangeViolation = (_minAllowed: Date) => {
+    setRangeWarningMessage("Start time must be in the future.");
     setShowRangeWarning(true);
   };
 
   const applyPickerValue = (target: PickerTarget, selectedValue: Date) => {
     const boundedNow = toMinutePrecision(new Date());
-    const boundedMaxStart = new Date(boundedNow.getTime() + FORTY_EIGHT_HOURS_MS);
 
     const clampStartDateTime = (date: Date): Date => {
       if (date < boundedNow) return new Date(boundedNow);
-      if (date > boundedMaxStart) return new Date(boundedMaxStart);
       return date;
     };
 
@@ -306,7 +295,7 @@ export default function CreateEventScreen() {
         setEndDateTime(new Date(clamped.getTime() + DEFAULT_EVENT_DURATION_MS));
       }
       if (clamped.getTime() !== updated.getTime()) {
-        notifyStartRangeViolation(boundedMaxStart);
+        notifyStartRangeViolation(boundedNow);
       }
       setStartDateTime(clamped);
       return;
@@ -322,7 +311,7 @@ export default function CreateEventScreen() {
         setEndDateTime(new Date(clamped.getTime() + DEFAULT_EVENT_DURATION_MS));
       }
       if (clamped.getTime() !== updated.getTime()) {
-        notifyStartRangeViolation(boundedMaxStart);
+        notifyStartRangeViolation(boundedNow);
       }
       setStartDateTime(clamped);
       return;
@@ -406,36 +395,10 @@ export default function CreateEventScreen() {
       return;
     }
 
-    if (isStartTooFar) {
-      setReviewError(
-        `Start time must be within 48 hours from now. Latest allowed: ${formatDate(maxStartDateTime)} ${formatTime(maxStartDateTime)}.`,
-      );
-      return;
-    }
-
     setShowConfirm(true);
   };
 
-  const snapStartToLatestAllowed = () => {
-    // Keep a 1-hour event while ensuring both start and end remain inside the 48-hour window.
-    const latestStartSlot = new Date(
-      maxStartDateTime.getTime() - DEFAULT_EVENT_DURATION_MS,
-    );
-    const latestEndSlot = new Date(maxStartDateTime);
-
-    setStartDateTime(latestStartSlot);
-    setEndDateTime(latestEndSlot);
-
-    setReviewError(null);
-  };
-
   const handleConfirm = async () => {
-    if (toMinutePrecision(startDateTime).getTime() > toMinutePrecision(new Date()).getTime() + FORTY_EIGHT_HOURS_MS) {
-      Alert.alert("Error", "Start time must be within 48 hours from now");
-      setShowConfirm(false);
-      return;
-    }
-
     const trimmedCapacity = capacity.trim();
     const capacityNum = trimmedCapacity ? parseInt(trimmedCapacity, 10) : null;
 
@@ -674,21 +637,11 @@ export default function CreateEventScreen() {
               type="date"
               value={toDateInputValue(startDateTime)}
               min={toDateInputValue(new Date())}
-              max={toDateInputValue(maxStartDateTime)}
               onChange={(event) =>
                 handleWebDateInputChange("startDate", event.currentTarget.value)
               }
               className="web-datetime-input"
             />
-            {isStartTooFar ? (
-              <Text className="text-red-500 text-xs mt-2">
-                ⚠ Start time must be within 48 hours from now.
-              </Text>
-            ) : (
-              <Text className="text-gray-400 text-xs mt-2">
-                Events must start within 48 hours from now.
-              </Text>
-            )}
             </View>
 
             <View className="px-5 py-4 border-b border-gray-200">
@@ -699,11 +652,6 @@ export default function CreateEventScreen() {
               min={
                 isSameDay(startDateTime, new Date())
                   ? toTimeInputValue(new Date())
-                  : undefined
-              }
-              max={
-                isSameDay(startDateTime, maxStartDateTime)
-                  ? toTimeInputValue(maxStartDateTime)
                   : undefined
               }
               onChange={(event) =>
