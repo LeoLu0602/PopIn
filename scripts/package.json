@@ -1,0 +1,15 @@
+{
+  "name": "popin-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "scrape": "tsx scrape-osu-events.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "tsx": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  }
+}
