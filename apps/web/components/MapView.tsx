@@ -121,10 +121,12 @@ export default function MapView({ events }: Props) {
             const markerLib: any = await google.maps.importLibrary('marker');
             const { MarkerClusterer } = await import('@googlemaps/markerclusterer');
 
-            // Step 1 — resolve positions for all events
+            // Step 1 — resolve positions for all events (skip online/virtual events)
+            const ONLINE_KEYWORDS = /\b(zoom|teams|webinar|online|virtual|remote)\b/i;
             const resolved: Array<{ event: EventWithDetails; position: { lat: number; lng: number } }> = [];
             for (const event of events) {
                 if (cancelled) break;
+                if (event.location_text && ONLINE_KEYWORDS.test(event.location_text)) continue;
                 let position: { lat: number; lng: number } | null = null;
                 if (event.location_lat != null && event.location_lng != null) {
                     position = { lat: event.location_lat, lng: event.location_lng };
