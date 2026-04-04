@@ -62,6 +62,7 @@ export interface Database {
           location_lng: number | null;
           capacity: number | null;
           description: string | null;
+          tags: string[];
           status: "active" | "canceled";
           created_at: string;
           reminder_sent_at: string | null;
@@ -78,6 +79,7 @@ export interface Database {
           location_lng?: number | null;
           capacity?: number | null;
           description?: string | null;
+          tags?: string[];
           status?: "active" | "canceled";
           created_at?: string;
           reminder_sent_at?: string | null;
@@ -94,6 +96,7 @@ export interface Database {
           location_lng?: number | null;
           capacity?: number | null;
           description?: string | null;
+          tags?: string[];
           status?: "active" | "canceled";
           created_at?: string;
           reminder_sent_at?: string | null;

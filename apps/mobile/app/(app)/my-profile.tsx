@@ -25,7 +25,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import { uploadAvatar } from "../../lib/storage";
-import type { Profile } from "shared";
+import { EVENT_TAGS, formatTagLabel, getTagColor, type Profile } from "shared";
 import { Card } from "../../components/Card";
 import { PrimaryButton, SecondaryButton } from "../../components/Button";
 
@@ -40,7 +40,7 @@ export default function MyProfileScreen() {
   const [displayName, setDisplayName] = useState("");
   const [major, setMajor] = useState("");
   const [year, setYear] = useState<number | null>(null);
-  const [interestTags, setInterestTags] = useState("");
+  const [interestTags, setInterestTags] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -77,7 +77,7 @@ export default function MyProfileScreen() {
     setDisplayName(p.display_name ?? "");
     setMajor(p.major ?? "");
     setYear(p.year ?? null);
-    setInterestTags(p.interest_tags.join(", "));
+    setInterestTags(p.interest_tags.filter((tag) => EVENT_TAGS.includes(tag as any)));
     setLoading(false);
   };
 
@@ -165,18 +165,13 @@ export default function MyProfileScreen() {
     if (!profile) return;
     setSaving(true);
 
-    const tags = interestTags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-
     const { error } = await supabase
       .from("profiles")
       .update({
         display_name: displayName.trim() || null,
         major: major.trim() || null,
         year,
-        interest_tags: tags,
+        interest_tags: interestTags,
       })
       .eq("id", profile.id);
 
@@ -196,7 +191,7 @@ export default function MyProfileScreen() {
     setDisplayName(profile.display_name ?? "");
     setMajor(profile.major ?? "");
     setYear(profile.year ?? null);
-    setInterestTags(profile.interest_tags.join(", "));
+    setInterestTags(profile.interest_tags.filter((tag) => EVENT_TAGS.includes(tag as any)));
     setEditing(false);
   };
 
@@ -322,15 +317,40 @@ export default function MyProfileScreen() {
                   </View>
                 </View>
                 <View>
-                  <Text className="text-gray-600 text-sm mb-1">
-                    Interests (comma-separated)
-                  </Text>
-                  <TextInput
-                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-base"
-                    value={interestTags}
-                    onChangeText={setInterestTags}
-                    placeholder="e.g. hiking, gaming, music"
-                  />
+                  <Text className="text-gray-600 text-sm mb-1">Interests</Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {EVENT_TAGS.map((tag) => {
+                      const isSelected = interestTags.includes(tag);
+                      const tagColor = getTagColor(tag);
+                      return (
+                        <TouchableOpacity
+                          key={tag}
+                          onPress={() =>
+                            setInterestTags((current) =>
+                              current.includes(tag)
+                                ? current.filter((item) => item !== tag)
+                                : [...current, tag],
+                            )
+                          }
+                          className="px-3 py-1.5 rounded-full"
+                          style={{
+                            backgroundColor: isSelected ? tagColor.backgroundColor : "#FFFFFF",
+                            borderWidth: 1,
+                            borderColor: isSelected ? tagColor.backgroundColor : "#E5E7EB",
+                          }}
+                        >
+                          <Text
+                            className="text-sm"
+                            style={{
+                              color: isSelected ? tagColor.textColor : "#1F2937",
+                            }}
+                          >
+                            {formatTagLabel(tag)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
                 <PrimaryButton title="Save" onPress={handleSave} loading={saving} />
                 <SecondaryButton title="Cancel" onPress={handleCancelEdit} />
@@ -363,9 +383,17 @@ export default function MyProfileScreen() {
                 {profile.interest_tags.map((tag) => (
                   <View
                     key={tag}
-                    className="bg-osu-scarlet px-3 py-1 rounded-full"
+                    className="px-3 py-1 rounded-full"
+                    style={{
+                      backgroundColor: getTagColor(tag).backgroundColor,
+                    }}
                   >
-                    <Text className="text-white text-sm">{tag}</Text>
+                    <Text
+                      className="text-sm"
+                      style={{ color: getTagColor(tag).textColor }}
+                    >
+                      {formatTagLabel(tag)}
+                    </Text>
                   </View>
                 ))}
               </View>

@@ -1,7 +1,7 @@
 import React from "react";
 import { TouchableOpacity, Text, View } from "react-native";
 import { router } from "expo-router";
-import type { EventWithDetails } from "shared";
+import { formatTagLabel, getTagColor, type EventWithDetails } from "shared";
 import { Card } from "./Card";
 
 interface EventCardProps {
@@ -32,6 +32,8 @@ export function EventCard({ event, onPress }: EventCardProps) {
   const isUnlimitedCapacity = event.capacity == null;
   const capacityValue = event.capacity ?? 0;
   const isFull = !isUnlimitedCapacity && attendeeCount >= capacityValue;
+  const visibleTags = (event.tags || []).slice(0, 4);
+  const extraTagCount = Math.max((event.tags || []).length - visibleTags.length, 0);
   const hostName =
     event.host?.display_name || event.host?.email.split("@")[0] || "host";
 
@@ -72,6 +74,32 @@ export function EventCard({ event, onPress }: EventCardProps) {
         <Text className="text-base text-gray-700 mb-3" numberOfLines={1}>
           📍 {event.location_text}
         </Text>
+
+        {visibleTags.length > 0 && (
+          <View className="flex-row flex-wrap mb-3">
+            {visibleTags.map((tag) => (
+              <View
+                key={`${event.id}-${tag}`}
+                className="rounded-full px-2 py-1 mr-2 mb-2"
+                style={{
+                  backgroundColor: getTagColor(tag).backgroundColor,
+                }}
+              >
+                <Text
+                  className="text-xs font-medium"
+                  style={{ color: getTagColor(tag).textColor }}
+                >
+                  {formatTagLabel(tag)}
+                </Text>
+              </View>
+            ))}
+            {extraTagCount > 0 && (
+              <View className="bg-gray-100 border border-gray-200 rounded-full px-2 py-1 mr-2 mb-2">
+                <Text className="text-xs text-gray-700 font-medium">+{extraTagCount}</Text>
+              </View>
+            )}
+          </View>
+        )}
 
         <View className="flex-row items-center justify-between pt-2 border-t border-gray-200">
           <Text className="text-sm text-gray-500" numberOfLines={1}>
