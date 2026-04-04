@@ -23,10 +23,43 @@ export interface Event {
   location_lng: number | null;
   capacity: number | null;
   description: string | null;
+  tags: EventTag[];
   image_url: string | null;
   status: "active" | "canceled";
   created_at: string;
 }
+
+export const EVENT_TAGS = [
+  "social",
+  "professional",
+  "academic",
+  "cultural",
+  "performance",
+  "movie",
+  "sports",
+  "fitness",
+  "gaming",
+  "volunteering",
+  "religious",
+  "political",
+  "music",
+  "art",
+  "tech",
+  "business",
+  "health",
+  "career",
+  "study",
+  "free_food",
+  "free_merch",
+  "networking",
+  "hiring",
+  "beginner_friendly",
+  "outdoor",
+  "online",
+  "drop_in",
+] as const;
+
+export type EventTag = (typeof EVENT_TAGS)[number];
 
 export interface EventMember {
   event_id: string;
