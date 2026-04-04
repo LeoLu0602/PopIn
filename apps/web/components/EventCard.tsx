@@ -1,50 +1,13 @@
 import React from "react";
 import { TouchableOpacity, Text, View } from "react-native";
 import { router } from "expo-router";
-import type { EventTag, EventWithDetails } from "shared";
+import { formatTagLabel, getTagColor, type EventWithDetails } from "shared";
 import { Card } from "./Card";
 
 interface EventCardProps {
   event: EventWithDetails;
   onPress?: () => void;
 }
-
-const TAG_COLORS: Partial<
-  Record<EventTag, { backgroundColor: string; textColor: string }>
-> = {
-  social: { backgroundColor: "#FFE4E6", textColor: "#BE123C" },
-  professional: { backgroundColor: "#F1F5F9", textColor: "#334155" },
-  academic: { backgroundColor: "#E0E7FF", textColor: "#4338CA" },
-  cultural: { backgroundColor: "#FEF3C7", textColor: "#B45309" },
-  performance: { backgroundColor: "#FAE8FF", textColor: "#A21CAF" },
-  movie: { backgroundColor: "#F4F4F5", textColor: "#3F3F46" },
-  sports: { backgroundColor: "#FFEDD5", textColor: "#C2410C" },
-  fitness: { backgroundColor: "#ECFCCB", textColor: "#4D7C0F" },
-  gaming: { backgroundColor: "#EDE9FE", textColor: "#6D28D9" },
-  volunteering: { backgroundColor: "#D1FAE5", textColor: "#047857" },
-  religious: { backgroundColor: "#FEF9C3", textColor: "#A16207" },
-  political: { backgroundColor: "#FEE2E2", textColor: "#B91C1C" },
-  music: { backgroundColor: "#FCE7F3", textColor: "#BE185D" },
-  art: { backgroundColor: "#CFFAFE", textColor: "#0E7490" },
-  tech: { backgroundColor: "#E0F2FE", textColor: "#0369A1" },
-  business: { backgroundColor: "#DBEAFE", textColor: "#1D4ED8" },
-  health: { backgroundColor: "#DCFCE7", textColor: "#15803D" },
-  career: { backgroundColor: "#CCFBF1", textColor: "#0F766E" },
-  study: { backgroundColor: "#F3E8FF", textColor: "#7E22CE" },
-  free_food: { backgroundColor: "#FFEDD5", textColor: "#C2410C" },
-  free_merch: { backgroundColor: "#FEF3C7", textColor: "#B45309" },
-  networking: { backgroundColor: "#CFFAFE", textColor: "#0E7490" },
-  hiring: { backgroundColor: "#FEE2E2", textColor: "#B91C1C" },
-  beginner_friendly: { backgroundColor: "#ECFCCB", textColor: "#4D7C0F" },
-  outdoor: { backgroundColor: "#DCFCE7", textColor: "#15803D" },
-  online: { backgroundColor: "#E0F2FE", textColor: "#0369A1" },
-  drop_in: { backgroundColor: "#F5F5F4", textColor: "#57534E" },
-};
-
-const DEFAULT_TAG_COLOR = {
-  backgroundColor: "#F3F4F6",
-  textColor: "#374151",
-};
 
 export function EventCard({ event, onPress }: EventCardProps) {
   const startDate = new Date(event.start_time);
@@ -73,12 +36,6 @@ export function EventCard({ event, onPress }: EventCardProps) {
   const extraTagCount = Math.max((event.tags || []).length - visibleTags.length, 0);
   const hostName =
     event.host?.display_name || event.host?.email.split("@")[0] || "host";
-
-  const formatTagLabel = (tag: string) =>
-    tag
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
 
   return (
     <TouchableOpacity
@@ -125,12 +82,12 @@ export function EventCard({ event, onPress }: EventCardProps) {
                 key={`${event.id}-${tag}`}
                 className="rounded-full px-2 py-1 mr-2 mb-2"
                 style={{
-                  backgroundColor: (TAG_COLORS[tag as EventTag] || DEFAULT_TAG_COLOR).backgroundColor,
+                  backgroundColor: getTagColor(tag).backgroundColor,
                 }}
               >
                 <Text
                   className="text-xs font-medium"
-                  style={{ color: (TAG_COLORS[tag as EventTag] || DEFAULT_TAG_COLOR).textColor }}
+                  style={{ color: getTagColor(tag).textColor }}
                 >
                   {formatTagLabel(tag)}
                 </Text>

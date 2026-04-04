@@ -20,13 +20,14 @@ const MapView = lazy(() => import('../../../components/MapView'));
 
 type ViewMode = 'list' | 'map';
 
-type FilterType = 'all' | 'next3hours' | 'today' | 'freeFood';
+type FilterType = 'all' | 'next3hours' | 'today' | 'freeFood' | 'myInterests';
 
 const FILTER_OPTIONS: Array<{ value: FilterType; label: string }> = [
     { value: 'all', label: 'All' },
     { value: 'next3hours', label: 'Next 3h' },
     { value: 'today', label: 'Today' },
     { value: 'freeFood', label: 'Free Food' },
+    { value: 'myInterests', label: 'My Interests' },
 ];
 
 const feedCache: Partial<Record<FilterType, EventWithDetails[]>> = {};
@@ -37,6 +38,34 @@ let feedOpenedFired = false;
 const compareByStartTime = (a: EventWithDetails, b: EventWithDetails) =>
     new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
 
+const calculateEventScore = (
+    event: EventWithDetails,
+    now: Date,
+    interestTags: string[],
+) => {
+    const interestSet = new Set(interestTags);
+    const matchCount = (event.tags || []).filter((tag) => interestSet.has(tag)).length;
+    const hoursUntilEvent =
+        (new Date(event.start_time).getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    return matchCount * 3 + (hoursUntilEvent < 24 ? 1 : 0);
+};
+
+const sortByScore = (
+    events: EventWithDetails[],
+    now: Date,
+    interestTags: string[],
+) =>
+    [...events].sort((a, b) => {
+        const scoreDiff =
+            calculateEventScore(b, now, interestTags) -
+            calculateEventScore(a, now, interestTags);
+
+        if (scoreDiff !== 0) return scoreDiff;
+
+        return compareByStartTime(a, b);
+    });
+
 export default function FeedScreen() {
     const [events, setEvents] = useState<EventWithDetails[]>(
         () => feedCache.all || [],
@@ -46,6 +75,7 @@ export default function FeedScreen() {
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const [userId, setUserId] = useState<string | null>(null);
+    const [interestTags, setInterestTags] = useState<string[]>([]);
     // Dedup guard: track event IDs that have already fired event_viewed this session
     const viewedIdsRef = useRef(new Set<string>());
 
@@ -58,6 +88,36 @@ export default function FeedScreen() {
         });
     }, []);
 
+    useEffect(() => {
+        if (!userId) {
+            setInterestTags([]);
+            return;
+        }
+
+        let cancelled = false;
+
+        supabase
+            .from('profiles')
+            .select('interest_tags')
+            .eq('id', userId)
+            .single()
+            .then(({ data, error }) => {
+                if (cancelled) return;
+
+                if (error) {
+                    console.error(error);
+                    setInterestTags([]);
+                    return;
+                }
+
+                setInterestTags((data?.interest_tags || []).filter(Boolean));
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [userId]);
+
 
     useEffect(() => {
         if (!feedOpenedFired) {
@@ -68,8 +128,10 @@ export default function FeedScreen() {
 
     const fetchEvents = useCallback(
         async (force = false) => {
+            const now = new Date();
+
             if (!force && feedCache[filter]) {
-                setEvents(feedCache[filter] || []);
+                setEvents(sortByScore(feedCache[filter] || [], now, interestTags));
                 setLoading(false);
                 return;
             }
@@ -89,8 +151,6 @@ export default function FeedScreen() {
                 .gte('start_time', new Date().toISOString())
                 .order('start_time', { ascending: true });
 
-            const now = new Date();
-
             if (filter === 'next3hours') {
                 const threeHoursLater = new Date(
                     now.getTime() + 3 * 60 * 60 * 1000,
@@ -102,6 +162,14 @@ export default function FeedScreen() {
                 query = query.lte('start_time', endOfDay.toISOString());
             } else if (filter === 'freeFood') {
                 query = query.contains('tags', ['free_food']);
+            } else if (filter === 'myInterests') {
+                if (interestTags.length === 0) {
+                    setEvents([]);
+                    setLoading(false);
+                    return;
+                }
+
+                query = query.overlaps('tags', interestTags);
             }
 
             const { data, error } = await query;
@@ -122,16 +190,22 @@ export default function FeedScreen() {
                             : false,
                     }),
                 );
-                const sortedEvents = [...eventsWithDetails].sort(
-                    compareByStartTime,
+                const sortedEvents = sortByScore(
+                    eventsWithDetails,
+                    now,
+                    interestTags,
                 );
-                feedCache[filter] = sortedEvents;
+
+                if (filter !== 'myInterests') {
+                    feedCache[filter] = eventsWithDetails;
+                }
+
                 setEvents(sortedEvents);
             }
 
             setLoading(false);
         },
-        [filter, userId],
+        [filter, userId, interestTags],
     );
 
     useEffect(() => {
