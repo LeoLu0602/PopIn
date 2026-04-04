@@ -20,12 +20,13 @@ const MapView = lazy(() => import('../../../components/MapView'));
 
 type ViewMode = 'list' | 'map';
 
-type FilterType = 'all' | 'next3hours' | 'today';
+type FilterType = 'all' | 'next3hours' | 'today' | 'freeFood';
 
 const FILTER_OPTIONS: Array<{ value: FilterType; label: string }> = [
     { value: 'all', label: 'All' },
     { value: 'next3hours', label: 'Next 3h' },
     { value: 'today', label: 'Today' },
+    { value: 'freeFood', label: 'Free Food' },
 ];
 
 const feedCache: Partial<Record<FilterType, EventWithDetails[]>> = {};
@@ -43,9 +44,13 @@ export default function FeedScreen() {
     const [loading, setLoading] = useState(() => !feedCache.all);
     const [filter, setFilter] = useState<FilterType>('all');
     const [viewMode, setViewMode] = useState<ViewMode>('list');
+    const [showFilterMenu, setShowFilterMenu] = useState(false);
     const [userId, setUserId] = useState<string | null>(null);
     // Dedup guard: track event IDs that have already fired event_viewed this session
     const viewedIdsRef = useRef(new Set<string>());
+
+    const activeFilterLabel =
+        FILTER_OPTIONS.find((option) => option.value === filter)?.label || 'All';
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data }) => {
@@ -95,6 +100,8 @@ export default function FeedScreen() {
                 const endOfDay = new Date(now);
                 endOfDay.setHours(23, 59, 59, 999);
                 query = query.lte('start_time', endOfDay.toISOString());
+            } else if (filter === 'freeFood') {
+                query = query.contains('tags', ['free_food']);
             }
 
             const { data, error } = await query;
@@ -140,10 +147,9 @@ export default function FeedScreen() {
 
     return (
         <View className="flex-1 bg-gray-100">
-            {/* Controls: view toggle + filter pills */}
-            <View className="px-4 py-3 flex-row items-center justify-between">
-                {/* List / Map toggle */}
-                <View className="flex-row items-center rounded-full border border-gray-300 p-1">
+            {/* Controls: Reddit-style sort dropdown + view toggle */}
+            <View className="px-4 py-3 flex-row items-start justify-between gap-3 relative z-20">
+                <View className="flex-row items-center rounded-full border border-gray-300 bg-white p-1">
                     {(['list', 'map'] as const).map((mode, i) => {
                         const isActive = viewMode === mode;
                         return (
@@ -161,23 +167,40 @@ export default function FeedScreen() {
                     })}
                 </View>
 
-                {/* All / Next 3h / Today filter pills */}
-                <View className="flex-row items-center rounded-full border border-gray-300 p-1">
-                    {FILTER_OPTIONS.map((option, index) => {
-                        const isActive = filter === option.value;
-                        return (
-                            <TouchableOpacity
-                                key={option.value}
-                                onPress={() => setFilter(option.value)}
-                                className={`px-4 py-2 rounded-full ${isActive ? 'bg-osu-scarlet' : 'bg-transparent'}`}
-                                style={{ marginRight: index < FILTER_OPTIONS.length - 1 ? 4 : 0 }}
-                            >
-                                <Text className={`font-semibold ${isActive ? 'text-white' : 'text-gray-700'}`}>
-                                    {option.label}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    })}
+                <View className="relative items-end flex-1">
+                    <TouchableOpacity
+                        onPress={() => setShowFilterMenu((value) => !value)}
+                        activeOpacity={0.8}
+                        className="flex-row items-center rounded-full bg-white px-4 py-2.5 border border-gray-200 shadow-sm"
+                    >
+                        <Text className="font-semibold text-gray-700 mr-2">{activeFilterLabel}</Text>
+                        <Text className="text-gray-500 text-sm">⌄</Text>
+                    </TouchableOpacity>
+
+                    {showFilterMenu && (
+                        <View className="absolute top-12 right-0 w-56 rounded-2xl bg-white border border-gray-200 shadow-lg overflow-hidden">
+                            <View className="px-4 py-3 border-b border-gray-100">
+                                <Text className="text-sm font-semibold text-gray-700">Filter by</Text>
+                            </View>
+                            {FILTER_OPTIONS.map((option) => {
+                                const isActive = filter === option.value;
+                                return (
+                                    <TouchableOpacity
+                                        key={option.value}
+                                        onPress={() => {
+                                            setFilter(option.value);
+                                            setShowFilterMenu(false);
+                                        }}
+                                        className={`px-4 py-3 ${isActive ? 'bg-gray-100' : 'bg-white'}`}
+                                    >
+                                        <Text className={`text-base ${isActive ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                                            {option.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                    )}
                 </View>
             </View>
 
