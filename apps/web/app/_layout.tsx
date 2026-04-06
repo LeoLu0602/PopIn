@@ -1,5 +1,6 @@
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import "../global.css";
 import { supabase } from "../lib/supabase";
 import type { Session } from "@supabase/supabase-js";
@@ -88,6 +89,7 @@ export default function RootLayout() {
   return (
     <>
       <Slot />
+      <Analytics />
       <GuestGateModal
         visible={guestGate.visible}
         routeKey={guestGate.routeKey}
