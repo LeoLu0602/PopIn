@@ -123,6 +123,31 @@ export default function MapView({ events }: Props) {
 
             // Step 1 — resolve positions for all events (skip online/virtual events)
             const ONLINE_KEYWORDS = /\b(zoom|teams|webinar|online|virtual|remote)\b/i;
+
+            // Batch-fetch geocode_cache for events missing lat/lng — one round-trip
+            const needsGeocoding = events
+                .filter(e =>
+                    e.location_lat == null &&
+                    e.location_lng == null &&
+                    e.location_text &&
+                    !ONLINE_KEYWORDS.test(e.location_text),
+                )
+                .map(e => e.location_text!);
+
+            const geocacheMap = new Map<string, { lat: number; lng: number }>();
+            if (needsGeocoding.length > 0) {
+                const { data: cacheRows } = await supabase
+                    .from('geocode_cache')
+                    .select('address, lat, lng')
+                    .in('address', needsGeocoding);
+                if (cacheRows) {
+                    for (const row of cacheRows) {
+                        geocacheMap.set(row.address, { lat: row.lat, lng: row.lng });
+                    }
+                }
+            }
+            if (cancelled) return;
+
             const resolved: Array<{ event: EventWithDetails; position: { lat: number; lng: number } }> = [];
             for (const event of events) {
                 if (cancelled) break;
@@ -131,7 +156,7 @@ export default function MapView({ events }: Props) {
                 if (event.location_lat != null && event.location_lng != null) {
                     position = { lat: event.location_lat, lng: event.location_lng };
                 } else if (event.location_text) {
-                    position = await resolveEventLocation(event.location_text);
+                    position = geocacheMap.get(event.location_text) ?? await resolveEventLocation(event.location_text);
                 }
                 if (position) resolved.push({ event, position });
             }
