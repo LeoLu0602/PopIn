@@ -112,9 +112,13 @@ async function geocodeWithJsApi(address: string): Promise<LatLng | null> {
 async function geocodeWithEdgeFunction(address: string): Promise<LatLng | null> {
     const { supabase } = await import('./supabase');
     const { data: { session } } = await supabase.auth.getSession();
+    const headers: Record<string, string> = {};
+    if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`;
+    }
     const { data, error } = await supabase.functions.invoke('geocode', {
         body: { address },
-        headers: { Authorization: `Bearer ${session!.access_token}` },
+        headers,
     });
     if (error || data?.lat == null || data?.lng == null) return null;
     return { lat: data.lat, lng: data.lng };
